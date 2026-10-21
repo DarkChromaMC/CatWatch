@@ -82,8 +82,8 @@ final class MonitorController: ObservableObject {
 
     func sendTestAlert() async -> String? {
         do {
-            try await settings.pushover.send(title: "CatWatch test", message: "Pushover is set up correctly. 🐈",
-                                              priority: .normal, sound: settings.sound)
+            try await settings.pushover.send(title: "CatWatch test", message: "Pushover is set up correctly. Real alerts sound like this. 🐈",
+                                              priority: settings.pushoverPriority, sound: settings.sound)
             return nil
         } catch {
             return error.localizedDescription

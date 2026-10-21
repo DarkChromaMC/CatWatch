@@ -38,9 +38,9 @@ struct SettingsView: View {
                     Picker("Priority", selection: $settings.priority) {
                         ForEach(PushoverPriority.allCases) { Text($0.label).tag($0.rawValue) }
                     }
-                    TextField("Sound (blank = default)", text: $settings.sound)
-                        .textInputAutocapitalization(.never)
-                        .autocorrectionDisabled()
+                    Picker("Sound", selection: $settings.sound) {
+                        ForEach(Self.sounds, id: \.self) { Text($0.isEmpty ? "Default" : $0.capitalized).tag($0) }
+                    }
                     Stepper("Cooldown: \(Self.duration(settings.cooldown))", value: $settings.cooldown, in: 15...1800, step: 15)
                     Toggle("Phone health alerts", isOn: $settings.healthAlerts)
                 }
@@ -73,6 +73,11 @@ struct SettingsView: View {
             }
         }
     }
+
+    /// Pushover's built-in sounds: https://pushover.net/api#sounds
+    static let sounds = ["", "pushover", "bike", "bugle", "cashregister", "classical", "cosmic", "falling",
+                         "gamelan", "incoming", "intermission", "magic", "mechanical", "pianobar", "siren",
+                         "spacealarm", "tugboat", "alien", "climb", "persistent", "echo", "updown", "vibrate", "none"]
 
     static func duration(_ seconds: Double) -> String {
         let s = Int(seconds)
