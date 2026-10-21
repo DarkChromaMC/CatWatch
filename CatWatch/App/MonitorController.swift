@@ -27,10 +27,10 @@ final class MonitorController: ObservableObject {
         self.settings = settings
         self.store = store
 
-        processor.onResult = { [weak self] result in
+        processor.onResult = { @Sendable [weak self] result in
             Task { @MainActor in self?.handle(result) }
         }
-        camera.onFrame = { [processor] buffer in processor.process(buffer) }
+        camera.onFrame = { @Sendable [processor] buffer in processor.process(buffer) }
 
         settings.objectWillChange
             .receive(on: RunLoop.main)
@@ -48,8 +48,10 @@ final class MonitorController: ObservableObject {
             errorMessage = CameraError.notAuthorized.localizedDescription
             return
         }
+        let camera = self.camera
+        let ultraWide = settings.useUltraWide
         let error: Error? = await withCheckedContinuation { cont in
-            camera.start(useUltraWide: settings.useUltraWide) { cont.resume(returning: $0) }
+            camera.start(useUltraWide: ultraWide) { @Sendable in cont.resume(returning: $0) }
         }
         if let error {
             errorMessage = error.localizedDescription

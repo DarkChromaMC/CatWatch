@@ -20,7 +20,7 @@ struct HistoryView: View {
             .navigationTitle("History")
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } }
-                ToolbarItem(placement: .destructiveAction) {
+                ToolbarItem(placement: .topBarLeading) {
                     Button("Clear", role: .destructive) { confirmClear = true }
                         .disabled(store.events.isEmpty)
                 }

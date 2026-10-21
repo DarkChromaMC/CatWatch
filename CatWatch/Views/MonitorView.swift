@@ -54,19 +54,19 @@ struct MonitorView: View {
     private func overlay(fit: CGRect) -> some View {
         let points = editingZone ? draft : settings.zone.points
         return Canvas { ctx, _ in
-            func map(_ p: CGPoint) -> CGPoint {
+            func toView(_ p: CGPoint) -> CGPoint {
                 CGPoint(x: fit.minX + p.x * fit.width, y: fit.minY + p.y * fit.height)
             }
             if points.count >= 2 {
                 var path = Path()
-                path.addLines(points.map(map))
+                path.addLines(points.map(toView))
                 if points.count >= 3 { path.closeSubpath() }
                 ctx.fill(path, with: .color(.red.opacity(0.18)))
                 ctx.stroke(path, with: .color(.red.opacity(0.9)), lineWidth: 2)
             }
             if editingZone {
                 for p in points {
-                    let c = map(p)
+                    let c = toView(p)
                     ctx.fill(Path(ellipseIn: CGRect(x: c.x - 6, y: c.y - 6, width: 12, height: 12)), with: .color(.red))
                 }
             }
@@ -92,7 +92,7 @@ struct MonitorView: View {
     private var statusBar: some View {
         VStack(alignment: .leading, spacing: 4) {
             HStack(spacing: 8) {
-                Circle().fill(monitor.isRunning ? .green : .gray).frame(width: 10, height: 10)
+                Circle().fill(monitor.isRunning ? Color.green : Color.gray).frame(width: 10, height: 10)
                 Text(monitor.isRunning ? "Watching" : "Stopped").font(.headline)
                 Spacer()
                 if !settings.zone.isValid && !editingZone {
