@@ -47,8 +47,9 @@ installs expire after 7 days.
    application called "CatWatch" to get an *API Token*. Paste both into CatWatch's
    Settings, then tap **Send test notification**.
 2. **Mount the phone** facing the yard and keep it on a charger.
-3. Tap **Zone** and tap around the grass area to outline it, then **Save**.
-   Without a zone, any cat in view triggers an alert.
+3. Tap **Zone**. A red box appears; drag its corner dots so the red area covers the
+   grass, tap near an edge to add a corner, then **Save**. Without a zone, any cat in
+   view triggers an alert.
 4. Turn on **Guided Access** (Settings › Accessibility) and triple-click the side button
    to lock the phone into CatWatch. iOS stops the camera if the app leaves the foreground.
 
