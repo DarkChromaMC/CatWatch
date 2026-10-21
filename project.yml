@@ -1,0 +1,57 @@
+name: CatWatch
+options:
+  bundleIdPrefix: com.darkchroma
+  deploymentTarget:
+    iOS: "17.0"
+  createIntermediateGroups: true
+settings:
+  base:
+    SWIFT_VERSION: "5.0"
+    MARKETING_VERSION: "0.1.0"
+    CURRENT_PROJECT_VERSION: "1"
+    DEVELOPMENT_TEAM: ""
+targets:
+  CatWatch:
+    type: application
+    platform: iOS
+    sources:
+      - CatWatch
+    info:
+      path: CatWatch/Info.plist
+      properties:
+        CFBundleDisplayName: CatWatch
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        NSCameraUsageDescription: CatWatch uses the camera to spot your cat entering the no-go zone.
+        UILaunchScreen: {}
+        UIRequiresFullScreen: true
+        UIStatusBarHidden: true
+        UISupportedInterfaceOrientations:
+          - UIInterfaceOrientationPortrait
+        UIApplicationSceneManifest:
+          UIApplicationSupportsMultipleScenes: false
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.darkchroma.catwatch
+        TARGETED_DEVICE_FAMILY: "1"
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        CODE_SIGN_STYLE: Automatic
+  CatWatchTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources:
+      - CatWatchTests
+    dependencies:
+      - target: CatWatch
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: YES
+        PRODUCT_BUNDLE_IDENTIFIER: com.darkchroma.catwatch.tests
+schemes:
+  CatWatch:
+    build:
+      targets:
+        CatWatch: all
+    test:
+      targets:
+        - CatWatchTests

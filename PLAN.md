@@ -14,9 +14,10 @@ and a Mac.
 - Keep the screen awake and dimmed; the phone runs plugged in and locked open with Guided Access.
 - Later: short video clip, live view over the LAN.
 
-## Open decisions
-- Native Swift app vs. Safari web app (see trade-offs below).
-- Native only: free Apple ID (re-sign every 7 days) vs. paid developer account.
+## Decisions
+- Native Swift app (chosen over the Safari web app; see the trade-offs below).
+- Free Apple ID. GitHub Actions builds an unsigned IPA; AltStore signs it and refreshes it over Wi-Fi.
+- Alerts go through Pushover.
 
 ## Native app vs. Safari web app
 

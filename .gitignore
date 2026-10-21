@@ -1,0 +1,7 @@
+CatWatch.xcodeproj/
+CatWatch/Info.plist
+build/
+dist/
+DerivedData/
+.DS_Store
+xcuserdata/
