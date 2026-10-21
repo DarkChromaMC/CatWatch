@@ -7,6 +7,8 @@ struct MonitorView: View {
 
     @State private var editingZone = false
     @State private var draft: [CGPoint] = []
+    @State private var draftHistory: [[CGPoint]] = []
+    @State private var dragIndex: Int?
     @State private var showSettings = false
     @State private var showHistory = false
 
@@ -67,7 +69,9 @@ struct MonitorView: View {
             if editingZone {
                 for p in points {
                     let c = toView(p)
-                    ctx.fill(Path(ellipseIn: CGRect(x: c.x - 6, y: c.y - 6, width: 12, height: 12)), with: .color(.red))
+                    let dot = Path(ellipseIn: CGRect(x: c.x - 12, y: c.y - 12, width: 24, height: 24))
+                    ctx.fill(dot, with: .color(.red))
+                    ctx.stroke(dot, with: .color(.white), lineWidth: 3)
                 }
             }
             for d in monitor.detections {
@@ -80,11 +84,40 @@ struct MonitorView: View {
         }
         .contentShape(Rectangle())
         .allowsHitTesting(editingZone)
-        .gesture(SpatialTapGesture().onEnded { value in
-            guard editingZone, fit.contains(value.location) else { return }
-            draft.append(CGPoint(x: (value.location.x - fit.minX) / fit.width,
-                                 y: (value.location.y - fit.minY) / fit.height))
-        })
+        .gesture(DragGesture(minimumDistance: 0)
+            .onChanged { value in
+                guard editingZone else { return }
+                if dragIndex == nil {
+                    // Only start a drag when the finger lands on a corner.
+                    guard let i = nearestCorner(to: value.startLocation, fit: fit) else { return }
+                    draftHistory.append(draft)
+                    dragIndex = i
+                }
+                if let i = dragIndex { draft[i] = normalized(value.location, in: fit) }
+            }
+            .onEnded { value in
+                defer { dragIndex = nil }
+                guard editingZone, dragIndex == nil, fit.contains(value.location),
+                      hypot(value.translation.width, value.translation.height) < 10 else { return }
+                // A tap adds a corner on the nearest edge, so lines never cross.
+                draftHistory.append(draft)
+                let p = normalized(value.location, in: fit)
+                draft.insert(p, at: Zone(points: draft).insertionIndex(for: p))
+            })
+    }
+
+    private func normalized(_ p: CGPoint, in fit: CGRect) -> CGPoint {
+        CGPoint(x: min(max((p.x - fit.minX) / fit.width, 0), 1),
+                y: min(max((p.y - fit.minY) / fit.height, 0), 1))
+    }
+
+    private func nearestCorner(to p: CGPoint, fit: CGRect) -> Int? {
+        let distances = draft.map { c in
+            hypot(fit.minX + c.x * fit.width - p.x, fit.minY + c.y * fit.height - p.y)
+        }
+        guard let best = distances.indices.min(by: { distances[$0] < distances[$1] }),
+              distances[best] < 44 else { return nil }
+        return best
     }
 
     // MARK: - Chrome
@@ -112,7 +145,7 @@ struct MonitorView: View {
                 Text("Set up Pushover in Settings to get alerts.").font(.caption).foregroundStyle(.orange)
             }
             if editingZone {
-                Text("Tap around the grass area to outline the no-go zone.").font(.caption)
+                Text("Drag the white-ringed dots so the red area covers the grass. Tap near an edge to add another corner.").font(.caption)
             }
         }
         .padding(10)
@@ -126,7 +159,8 @@ struct MonitorView: View {
                 if monitor.isRunning { monitor.stop() } else { Task { await monitor.start() } }
             }
             controlButton("Zone", "skew") {
-                draft = settings.zone.points
+                draft = settings.zone.isValid ? settings.zone.points : Zone.starter.points
+                draftHistory = []
                 editingZone = true
             }
             controlButton("History", "photo.on.rectangle") { showHistory = true }
@@ -137,8 +171,11 @@ struct MonitorView: View {
 
     private var zoneControls: some View {
         HStack(spacing: 12) {
-            controlButton("Undo", "arrow.uturn.backward") { if !draft.isEmpty { draft.removeLast() } }
-            controlButton("Clear", "trash") { draft = [] }
+            controlButton("Undo", "arrow.uturn.backward") { if let last = draftHistory.popLast() { draft = last } }
+            controlButton("Reset", "arrow.counterclockwise") {
+                draftHistory.append(draft)
+                draft = Zone.starter.points
+            }
             controlButton("Cancel", "xmark") { editingZone = false }
             controlButton("Save", "checkmark") {
                 settings.zone = Zone(points: draft.count >= 3 ? draft : [])

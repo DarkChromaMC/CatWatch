@@ -32,6 +32,15 @@ final class ZoneTests: XCTestCase {
         XCTAssertTrue(Zone().intersects(box: CGRect(x: 0.1, y: 0.1, width: 0.1, height: 0.1)))
     }
 
+    func testInsertionSplitsNearestEdge() {
+        // Square; a point just below the bottom edge (index 2 -> 3) goes between them.
+        let square = Zone(points: [CGPoint(x: 0, y: 0), CGPoint(x: 1, y: 0), CGPoint(x: 1, y: 1), CGPoint(x: 0, y: 1)])
+        XCTAssertEqual(square.insertionIndex(for: CGPoint(x: 0.5, y: 1.05)), 3)
+        // Near the closing edge (index 3 -> 0) appends at the end.
+        XCTAssertEqual(square.insertionIndex(for: CGPoint(x: -0.05, y: 0.5)), 4)
+        XCTAssertEqual(Zone(points: [CGPoint(x: 0, y: 0)]).insertionIndex(for: .zero), 1)
+    }
+
     func testCodableRoundTrip() throws {
         let data = try JSONEncoder().encode(grass)
         XCTAssertEqual(try JSONDecoder().decode(Zone.self, from: data), grass)
