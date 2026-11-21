@@ -41,7 +41,7 @@ final class FrameProcessor: @unchecked Sendable {
 
         let ciImage = CIImage(cvPixelBuffer: pixelBuffer)
         let frame = ciImage.extent.size
-        let moved = MotionDetector.thumbnail(pixelBuffer).map { motion.update(thumb: $0, zone: cfg.zone) } ?? (0, nil)
+        let moved = MotionDetector.thumbnail(pixelBuffer).map { motion.update(thumb: $0, zone: cfg.zone) } ?? (fraction: 0, box: nil)
         let regions = planner.regions(zone: cfg.zone, frame: frame, motionBox: moved.box, now: now)
 
         // Detect down to 10% so a weak sighting gets a closer look (and training can keep it);
@@ -51,7 +51,7 @@ final class FrameProcessor: @unchecked Sendable {
         let detections = all.filter { $0.confidence >= cfg.minConfidence }
         var full: CGImage?
         if cfg.recordTraining {
-            let best = all.map(\.confidence).max() ?? 0
+            let best = all.map { $0.confidence }.max() ?? 0
             if let name = recorder.frameName(now: now, motion: moved.fraction, isMotion: moved.box != nil, catConfidence: best) {
                 full = ciContext.createCGImage(ciImage, from: ciImage.extent)
                 if let full { recorder.save(full, name: name, zone: cfg.zone) }
