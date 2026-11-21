@@ -7,6 +7,8 @@ struct SettingsView: View {
 
     @State private var testResult: String?
     @State private var testing = false
+    @State private var trainingFrames = 0
+    @State private var confirmDelete = false
 
     var body: some View {
         NavigationStack {
@@ -59,6 +61,42 @@ struct SettingsView: View {
                 }
 
                 Section {
+                    Toggle("Web view", isOn: $settings.webViewEnabled)
+                    if settings.webViewEnabled {
+                        LabeledContent("PIN", value: settings.webPin)
+                        if let address = LiveServer.wifiAddress() {
+                            let link = "http://\(address):\(LiveServer.port)/?pin=\(settings.webPin)"
+                            Text(link).font(.footnote.monospaced()).textSelection(.enabled)
+                        } else {
+                            Text("Connect this phone to Wi-Fi to get the link.").font(.footnote)
+                        }
+                        Button("New PIN") { settings.webPin = String(format: "%04d", Int.random(in: 0...9999)) }
+                    }
+                } header: {
+                    Text("Web view")
+                } footer: {
+                    Text("Open the link in a browser on any device on the same Wi-Fi to see the live camera, the zone, zoom areas and recent alerts. If iOS asks to allow local network access, tap Allow.")
+                }
+
+                Section {
+                    Toggle("Record training frames", isOn: $settings.recordTraining)
+                    LabeledContent("Saved frames", value: "\(trainingFrames) of \(TrainingRecorder.maxFrames)")
+                    Button("Delete saved frames", role: .destructive) { confirmDelete = true }
+                        .disabled(trainingFrames == 0)
+                        .confirmationDialog("Delete all \(trainingFrames) saved frames?", isPresented: $confirmDelete,
+                                            titleVisibility: .visible) {
+                            Button("Delete", role: .destructive) {
+                                monitor.deleteTrainingFrames()
+                                trainingFrames = 0
+                            }
+                        }
+                } header: {
+                    Text("Training")
+                } footer: {
+                    Text("While watching, saves a picture whenever something moves in the zone (at most every 2 s) and one every 10 minutes. Find them in Files › On My iPhone › CatWatch › TrainingFrames and AirDrop the folder to your Mac.")
+                }
+
+                Section {
                     Stepper(settings.dimAfter == 0 ? "Blank screen: never" : "Blank screen after \(Self.duration(settings.dimAfter))",
                             value: $settings.dimAfter, in: 0...600, step: 30)
                 } header: {
@@ -68,6 +106,7 @@ struct SettingsView: View {
                 }
             }
             .navigationTitle("Settings")
+            .onAppear { trainingFrames = TrainingRecorder.frameCount() }
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } }
             }

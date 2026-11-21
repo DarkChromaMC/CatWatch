@@ -16,11 +16,16 @@ final class EventStore: ObservableObject {
     static let maxEvents = 300
 
     private let directory: URL
+    nonisolated var directoryURL: URL { Self.directoryURL }
+
+    nonisolated static var directoryURL: URL {
+        FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+            .appendingPathComponent("Events", isDirectory: true)
+    }
     private var indexURL: URL { directory.appendingPathComponent("events.json") }
 
     init() {
-        let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
-        directory = base.appendingPathComponent("Events", isDirectory: true)
+        directory = Self.directoryURL
         try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         if let data = try? Data(contentsOf: indexURL),
            let decoded = try? JSONDecoder().decode([CatEvent].self, from: data) {

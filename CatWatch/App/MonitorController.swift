@@ -11,9 +11,14 @@ final class MonitorController: ObservableObject {
     @Published private(set) var lastFrameAt: Date?
     @Published private(set) var lastAlertAt: Date?
     @Published private(set) var lastAlertError: String?
+    /// The picture is too dark for the detector to see a cat.
+    @Published private(set) var isTooDark = false
     @Published var errorMessage: String?
 
     let camera = CameraService()
+    let web = LiveServer()
+    private var lastStatusAt = Date.distantPast
+    private var darkness = DarknessMonitor()
     private let processor = FrameProcessor()
     private let settings: AppSettings
     private let store: EventStore
@@ -31,6 +36,8 @@ final class MonitorController: ObservableObject {
             Task { @MainActor in self?.handle(result) }
         }
         camera.onFrame = { @Sendable [processor] buffer in processor.process(buffer) }
+        processor.wantsPreview = { @Sendable [web] in web.hasViewer }
+        web.setEventsDirectory(store.directoryURL)
 
         settings.objectWillChange
             .receive(on: RunLoop.main)
@@ -68,6 +75,7 @@ final class MonitorController: ObservableObject {
         camera.stop()
         isRunning = false
         detections = []
+        if web.isRunning { publishStatus() }
         watchdog?.invalidate()
         watchdog = nil
         UIApplication.shared.isIdleTimerDisabled = false
@@ -90,14 +98,89 @@ final class MonitorController: ObservableObject {
         }
     }
 
+    // MARK: - Darkness
+
+    /// Always sent (even with health alerts off): a silent night would look like "no cat".
+    private func darknessChanged(_ dark: Bool) {
+        isTooDark = dark
+        let message = dark
+            ? "It's too dark for CatWatch to see, so it can't spot your cat. It will tell you when it can see again."
+            : "CatWatch can see again and is watching for your cat."
+        let client = settings.pushover
+        let sound = settings.sound
+        Task { try? await client.send(title: dark ? "🌙 CatWatch" : "☀️ CatWatch", message: message, priority: .normal, sound: sound) }
+        if web.isRunning { publishStatus() }
+    }
+
+    // MARK: - Web view
+
+    private func updateWebServer() {
+        web.pin = settings.webPin
+        if settings.webViewEnabled {
+            if !web.isRunning {
+                do { try web.start() } catch { errorMessage = "Web view could not start (\(error.localizedDescription))" }
+            }
+            publishStatus()
+        } else if web.isRunning {
+            web.stop()
+        }
+    }
+
+    private func publishLiveView(_ result: FrameResult, zone: Zone) {
+        if Date().timeIntervalSince(lastStatusAt) >= 1 { publishStatus() }
+        guard web.hasViewer, let image = result.image else { return }
+        let all = result.allDetections.map { d -> CatDetection in
+            var d = d
+            d.inZone = zone.intersects(box: d.box)
+            return d
+        }
+        let minConfidence = Float(settings.minConfidence)
+        let web = self.web
+        Task.detached(priority: .utility) {
+            if let jpeg = SnapshotRenderer.jpeg(from: image, zone: zone, detections: all, date: Date(), maxDimension: 900,
+                                                minConfidence: minConfidence, regions: result.regions, quality: 0.6) {
+                web.update(frame: jpeg)
+            }
+        }
+    }
+
+    private func publishStatus() {
+        lastStatusAt = Date()
+        let level = UIDevice.current.batteryLevel
+        let state = UIDevice.current.batteryState
+        let best = detections.map(\.confidence).max()
+        let status: [String: Any] = [
+            "running": isRunning,
+            "dark": isTooDark,
+            "cats": best.map { Int($0 * 100) } ?? 0,
+            "battery": level < 0 ? "?" : "\(Int(level * 100))%",
+            "charging": state == .charging || state == .full,
+            "hot": ProcessInfo.processInfo.thermalState.rawValue >= ProcessInfo.ThermalState.serious.rawValue,
+            "lastAlert": lastAlertAt.map { Date().timeIntervalSince($0) as Any } ?? NSNull(),
+            "events": store.events.prefix(12).map { e -> [String: Any] in
+                ["id": e.id.uuidString, "date": ISO8601DateFormatter().string(from: e.date),
+                 "confidence": Int(e.confidence * 100), "sent": e.alertSent]
+            },
+        ]
+        if let data = try? JSONSerialization.data(withJSONObject: status) { web.update(status: data) }
+    }
+
+    // MARK: - Training frames
+
+    func deleteTrainingFrames() {
+        processor.recorder.deleteAll()
+    }
+
     // MARK: - Frames
 
     private func applySettings() {
         // objectWillChange fires before the new value lands; read on the next run loop turn.
         DispatchQueue.main.async { [self] in
-            processor.config = DetectionConfig(rate: settings.detectionRate, minConfidence: Float(settings.minConfidence))
+            processor.config = DetectionConfig(rate: settings.detectionRate, minConfidence: Float(settings.minConfidence),
+                                               recordTraining: settings.recordTraining, zone: settings.zone)
             gate.requiredHits = settings.requiredHits
             gate.cooldown = settings.cooldown
+            updateWebServer()
         }
     }
 
@@ -113,6 +196,10 @@ final class MonitorController: ObservableObject {
             return d
         }
         detections = marked
+        if let brightness = result.brightness, let dark = darkness.update(brightness: brightness, at: Date()) {
+            darknessChanged(dark)
+        }
+        if web.isRunning { publishLiveView(result, zone: zone) }
 
         let inZone = marked.filter(\.inZone)
         guard gate.register(hit: !inZone.isEmpty, at: Date()), let image = result.image else { return }
