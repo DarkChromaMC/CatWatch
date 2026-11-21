@@ -86,3 +86,52 @@ final class MultipartTests: XCTestCase {
         XCTAssertTrue(form.contentType.hasSuffix(form.boundary))
     }
 }
+
+final class MotionDetectorTests: XCTestCase {
+    func testChangedFractionOnlyCountsMaskedCells() {
+        let prev: [UInt8] = [100, 100, 100, 100]
+        let cur: [UInt8] = [200, 100, 200, 105]
+        // Cells 0 and 2 changed a lot; cell 2 is outside the mask; cell 3 changed below threshold.
+        let mask = [true, true, false, true]
+        XCTAssertEqual(MotionDetector.changedFraction(previous: prev, current: cur, mask: mask, threshold: 22), 1.0 / 3.0, accuracy: 1e-9)
+    }
+
+    func testEmptyZoneMasksWholeFrame() {
+        XCTAssertTrue(MotionDetector.mask(for: Zone()).allSatisfy { $0 })
+        XCTAssertEqual(MotionDetector.mask(for: Zone()).count, MotionDetector.cols * MotionDetector.rows)
+    }
+
+    func testFirstFrameIsNotMotion() {
+        var detector = MotionDetector()
+        let thumb = [UInt8](repeating: 50, count: MotionDetector.cols * MotionDetector.rows)
+        XCTAssertEqual(detector.update(thumb: thumb, zone: Zone()), 0)
+        let brighter = [UInt8](repeating: 120, count: thumb.count)
+        XCTAssertEqual(detector.update(thumb: brighter, zone: Zone()), 1)
+    }
+
+    func testRecorderRateLimits() {
+        let recorder = TrainingRecorder()
+        recorder.deleteAll()
+        XCTAssertNotNil(recorder.frameName(now: 1000, motion: 0.01, isMotion: true, catConfidence: 0))
+        XCTAssertNil(recorder.frameName(now: 1001, motion: 0.01, isMotion: true, catConfidence: 0))
+        XCTAssertNotNil(recorder.frameName(now: 1002.5, motion: 0, isMotion: false, catConfidence: 0.3))
+        recorder.deleteAll()
+    }
+}
+
+final class TrainingBudgetTests: XCTestCase {
+    func testWindyHourSlowsDown() {
+        let recorder = TrainingRecorder()
+        recorder.deleteAll()
+        var t: CFTimeInterval = 10_000
+        for _ in 0..<TrainingRecorder.hourlyBudget {
+            XCTAssertNotNil(recorder.frameName(now: t, motion: 0.01, isMotion: true, catConfidence: 0))
+            t += 3
+        }
+        // Over budget: plain motion waits a minute, a possible cat still gets through.
+        XCTAssertNil(recorder.frameName(now: t, motion: 0.01, isMotion: true, catConfidence: 0))
+        XCTAssertNotNil(recorder.frameName(now: t, motion: 0, isMotion: false, catConfidence: 0.2))
+        XCTAssertNotNil(recorder.frameName(now: t + 61, motion: 0.01, isMotion: true, catConfidence: 0))
+        recorder.deleteAll()
+    }
+}

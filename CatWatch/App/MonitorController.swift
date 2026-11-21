@@ -90,12 +90,19 @@ final class MonitorController: ObservableObject {
         }
     }
 
+    // MARK: - Training frames
+
+    func deleteTrainingFrames() {
+        processor.recorder.deleteAll()
+    }
+
     // MARK: - Frames
 
     private func applySettings() {
         // objectWillChange fires before the new value lands; read on the next run loop turn.
         DispatchQueue.main.async { [self] in
-            processor.config = DetectionConfig(rate: settings.detectionRate, minConfidence: Float(settings.minConfidence))
+            processor.config = DetectionConfig(rate: settings.detectionRate, minConfidence: Float(settings.minConfidence),
+                                               recordTraining: settings.recordTraining, zone: settings.zone)
             gate.requiredHits = settings.requiredHits
             gate.cooldown = settings.cooldown
         }
