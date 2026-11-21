@@ -66,15 +66,29 @@ struct MotionDetector {
         }
     }
 
-    /// Feeds the next frame's thumbnail; returns the changed fraction since the previous one.
-    mutating func update(thumb: [UInt8], zone: Zone) -> Double {
+    /// Feeds the next frame's thumbnail; returns the changed fraction since the previous one
+    /// and the bounding box (normalized, origin top-left) of the changed cells in the zone.
+    mutating func update(thumb: [UInt8], zone: Zone) -> (fraction: Double, box: CGRect?) {
         if maskZone != zone {
             mask = Self.mask(for: zone)
             maskZone = zone
         }
         defer { previous = thumb }
-        guard let previous else { return 0 }
-        return Self.changedFraction(previous: previous, current: thumb, mask: mask, threshold: pixelThreshold)
+        guard let previous, previous.count == thumb.count else { return (0, nil) }
+        let fraction = Self.changedFraction(previous: previous, current: thumb, mask: mask, threshold: pixelThreshold)
+        guard fraction >= minFraction else { return (fraction, nil) }
+        return (fraction, Self.changedBox(previous: previous, current: thumb, mask: mask, threshold: pixelThreshold))
+    }
+
+    static func changedBox(previous: [UInt8], current: [UInt8], mask: [Bool], threshold: Int) -> CGRect? {
+        var minC = cols, minR = rows, maxC = -1, maxR = -1
+        for i in current.indices where mask[i] && abs(Int(current[i]) - Int(previous[i])) > threshold {
+            let r = i / cols, c = i % cols
+            minC = min(minC, c); maxC = max(maxC, c); minR = min(minR, r); maxR = max(maxR, r)
+        }
+        guard maxC >= 0 else { return nil }
+        return CGRect(x: Double(minC) / Double(cols), y: Double(minR) / Double(rows),
+                      width: Double(maxC - minC + 1) / Double(cols), height: Double(maxR - minR + 1) / Double(rows))
     }
 
     mutating func reset() { previous = nil }

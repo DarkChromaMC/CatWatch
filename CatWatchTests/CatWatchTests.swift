@@ -104,9 +104,16 @@ final class MotionDetectorTests: XCTestCase {
     func testFirstFrameIsNotMotion() {
         var detector = MotionDetector()
         let thumb = [UInt8](repeating: 50, count: MotionDetector.cols * MotionDetector.rows)
-        XCTAssertEqual(detector.update(thumb: thumb, zone: Zone()), 0)
-        let brighter = [UInt8](repeating: 120, count: thumb.count)
-        XCTAssertEqual(detector.update(thumb: brighter, zone: Zone()), 1)
+        XCTAssertEqual(detector.update(thumb: thumb, zone: Zone()).fraction, 0)
+        var brighter = thumb
+        // Change a 4x4 block of cells near the top-left.
+        for r in 2..<6 { for c in 3..<7 { brighter[r * MotionDetector.cols + c] = 200 } }
+        let result = detector.update(thumb: brighter, zone: Zone())
+        XCTAssertEqual(result.fraction, 16.0 / Double(thumb.count), accuracy: 1e-9)
+        let box = try! XCTUnwrap(result.box)
+        XCTAssertEqual(box.minX, 3.0 / Double(MotionDetector.cols), accuracy: 1e-9)
+        XCTAssertEqual(box.width, 4.0 / Double(MotionDetector.cols), accuracy: 1e-9)
+        XCTAssertEqual(box.minY, 2.0 / Double(MotionDetector.rows), accuracy: 1e-9)
     }
 
     func testRecorderRateLimits() {
@@ -133,5 +140,47 @@ final class TrainingBudgetTests: XCTestCase {
         XCTAssertNotNil(recorder.frameName(now: t, motion: 0, isMotion: false, catConfidence: 0.2))
         XCTAssertNotNil(recorder.frameName(now: t + 61, motion: 0.01, isMotion: true, catConfidence: 0))
         recorder.deleteAll()
+    }
+}
+
+final class ScanPlannerTests: XCTestCase {
+    let frame = CGSize(width: 1080, height: 1920)
+
+    func testSquareAroundSmallBoxIsAtLeastATileAndInsideFrame() {
+        let r = ScanPlanner.square(around: CGRect(x: 0.98, y: 0.99, width: 0.01, height: 0.005), frame: frame)
+        XCTAssertEqual(r.width * frame.width, 1080 * ScanPlanner.tileFraction, accuracy: 0.5)
+        XCTAssertEqual(r.width * frame.width, r.height * frame.height, accuracy: 0.5) // square in pixels
+        XCTAssertLessThanOrEqual(r.maxX, 1.0001)
+        XCTAssertLessThanOrEqual(r.maxY, 1.0001)
+    }
+
+    func testTilesCoverTheZone() {
+        let area = CGRect(x: 0, y: 0.5, width: 1, height: 0.4)
+        let tiles = ScanPlanner.tiles(covering: area, frame: frame)
+        XCTAssertGreaterThan(tiles.count, 1)
+        for p in [CGPoint(x: 0.01, y: 0.51), CGPoint(x: 0.99, y: 0.89), CGPoint(x: 0.5, y: 0.7)] {
+            XCTAssertTrue(tiles.contains { $0.contains(p) }, "\(p) not covered")
+        }
+    }
+
+    func testRegionsRotateTilesAndFocusOnSightings() {
+        var planner = ScanPlanner()
+        let zone = Zone(points: [CGPoint(x: 0, y: 0.5), CGPoint(x: 1, y: 0.5), CGPoint(x: 1, y: 0.9), CGPoint(x: 0, y: 0.9)])
+        let first = planner.regions(zone: zone, frame: frame, motionBox: nil, now: 0)
+        let second = planner.regions(zone: zone, frame: frame, motionBox: nil, now: 0.3)
+        XCTAssertEqual(first.first, ScanPlanner.whole)
+        XCTAssertEqual(first.count, 2)
+        XCTAssertNotEqual(first[1], second[1])
+        planner.noteSighting(CGRect(x: 0.2, y: 0.2, width: 0.05, height: 0.03), now: 1)
+        XCTAssertEqual(planner.regions(zone: zone, frame: frame, motionBox: nil, now: 2).count, 3)
+        XCTAssertEqual(planner.regions(zone: zone, frame: frame, motionBox: nil, now: 7).count, 2)
+    }
+
+    func testMergeKeepsMostConfidentOfOverlappingBoxes() {
+        let a = CatDetection(box: CGRect(x: 0.1, y: 0.1, width: 0.2, height: 0.2), confidence: 0.4)
+        let b = CatDetection(box: CGRect(x: 0.12, y: 0.12, width: 0.1, height: 0.1), confidence: 0.8)
+        let c = CatDetection(box: CGRect(x: 0.7, y: 0.7, width: 0.1, height: 0.1), confidence: 0.3)
+        let merged = CatDetector.mergeOverlapping([a, b, c])
+        XCTAssertEqual(merged.map(\.confidence), [0.8, 0.3])
     }
 }
