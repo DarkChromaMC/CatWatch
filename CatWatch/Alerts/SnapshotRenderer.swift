@@ -2,7 +2,11 @@ import UIKit
 
 /// Draws the zone, cat boxes and a timestamp onto a frame and encodes it as JPEG.
 enum SnapshotRenderer {
-    static func jpeg(from image: CGImage, zone: Zone, detections: [CatDetection], date: Date, maxDimension: CGFloat = 1280) -> Data? {
+    /// - Parameters:
+    ///   - minConfidence: weaker detections are drawn grey (live view shows sightings below the alert threshold).
+    ///   - regions: zoomed-in crops the detector looked at, drawn as thin outlines (live view only).
+    static func jpeg(from image: CGImage, zone: Zone, detections: [CatDetection], date: Date, maxDimension: CGFloat = 1280,
+                     minConfidence: Float = 0, regions: [CGRect] = [], quality: CGFloat = 0.75) -> Data? {
         let full = CGSize(width: image.width, height: image.height)
         let scale = min(1, maxDimension / max(full.width, full.height))
         let size = CGSize(width: (full.width * scale).rounded(), height: (full.height * scale).rounded())
@@ -28,10 +32,18 @@ enum SnapshotRenderer {
                 path.stroke()
             }
 
+            cg.setStrokeColor(UIColor.systemTeal.withAlphaComponent(0.6).cgColor)
+            cg.setLineWidth(1.5)
+            for r in regions where r != CGRect(x: 0, y: 0, width: 1, height: 1) {
+                cg.stroke(CGRect(x: r.minX * size.width, y: r.minY * size.height,
+                                 width: r.width * size.width, height: r.height * size.height))
+            }
+
             for d in detections {
                 let r = CGRect(x: d.box.minX * size.width, y: d.box.minY * size.height,
                                width: d.box.width * size.width, height: d.box.height * size.height)
-                cg.setStrokeColor((d.inZone ? UIColor.systemRed : UIColor.systemYellow).cgColor)
+                let color = d.confidence < minConfidence ? UIColor.systemGray : (d.inZone ? UIColor.systemRed : UIColor.systemYellow)
+                cg.setStrokeColor(color.cgColor)
                 cg.setLineWidth(4)
                 cg.stroke(r)
                 label("Cat \(Int(d.confidence * 100))%", at: CGPoint(x: r.minX, y: max(0, r.minY - 28)))
@@ -40,7 +52,7 @@ enum SnapshotRenderer {
             let stamp = date.formatted(date: .abbreviated, time: .standard)
             label(stamp, at: CGPoint(x: 12, y: size.height - 40))
         }
-        return rendered.jpegData(compressionQuality: 0.75)
+        return rendered.jpegData(compressionQuality: quality)
     }
 
     private static func label(_ text: String, at origin: CGPoint) {

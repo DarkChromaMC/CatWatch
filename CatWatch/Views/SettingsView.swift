@@ -61,6 +61,24 @@ struct SettingsView: View {
                 }
 
                 Section {
+                    Toggle("Web view", isOn: $settings.webViewEnabled)
+                    if settings.webViewEnabled {
+                        LabeledContent("PIN", value: settings.webPin)
+                        if let address = LiveServer.wifiAddress() {
+                            let link = "http://\(address):\(LiveServer.port)/?pin=\(settings.webPin)"
+                            Text(link).font(.footnote.monospaced()).textSelection(.enabled)
+                        } else {
+                            Text("Connect this phone to Wi-Fi to get the link.").font(.footnote)
+                        }
+                        Button("New PIN") { settings.webPin = String(format: "%04d", Int.random(in: 0...9999)) }
+                    }
+                } header: {
+                    Text("Web view")
+                } footer: {
+                    Text("Open the link in a browser on any device on the same Wi-Fi to see the live camera, the zone, zoom areas and recent alerts. If iOS asks to allow local network access, tap Allow.")
+                }
+
+                Section {
                     Toggle("Record training frames", isOn: $settings.recordTraining)
                     LabeledContent("Saved frames", value: "\(trainingFrames) of \(TrainingRecorder.maxFrames)")
                     Button("Delete saved frames", role: .destructive) { confirmDelete = true }

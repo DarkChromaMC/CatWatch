@@ -23,6 +23,7 @@ targets:
         CFBundleShortVersionString: $(MARKETING_VERSION)
         CFBundleVersion: $(CURRENT_PROJECT_VERSION)
         NSCameraUsageDescription: CatWatch uses the camera to spot your cat entering the no-go zone.
+        NSLocalNetworkUsageDescription: CatWatch shows its live view to browsers on your Wi-Fi.
         UILaunchScreen: {}
         UIFileSharingEnabled: true
         LSSupportsOpeningDocumentsInPlace: true

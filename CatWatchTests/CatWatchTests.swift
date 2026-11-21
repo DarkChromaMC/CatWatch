@@ -184,3 +184,28 @@ final class ScanPlannerTests: XCTestCase {
         XCTAssertEqual(merged.map(\.confidence), [0.8, 0.3])
     }
 }
+
+final class LiveServerTests: XCTestCase {
+    func body(_ response: Data) -> String { String(decoding: response, as: UTF8.self) }
+
+    func testPinRequired() {
+        let server = LiveServer()
+        server.pin = "4321"
+        XCTAssertTrue(body(server.respond(to: "/")).contains("Enter the PIN"))
+        XCTAssertTrue(body(server.respond(to: "/status.json?pin=1111")).hasPrefix("HTTP/1.1 403"))
+        XCTAssertTrue(body(server.respond(to: "/?pin=4321")).contains("Recent alerts"))
+    }
+
+    func testFrameAndViewerTracking() {
+        let server = LiveServer()
+        server.pin = "1"
+        XCTAssertFalse(server.hasViewer)
+        XCTAssertTrue(body(server.respond(to: "/frame.jpg?pin=1")).hasPrefix("HTTP/1.1 503"))
+        XCTAssertTrue(server.hasViewer)
+        server.update(frame: Data([0xFF, 0xD8]))
+        let r = server.respond(to: "/frame.jpg?pin=1")
+        XCTAssertTrue(body(r).hasPrefix("HTTP/1.1 200"))
+        XCTAssertEqual(r.suffix(2), Data([0xFF, 0xD8]))
+        XCTAssertTrue(body(server.respond(to: "/nope?pin=1")).hasPrefix("HTTP/1.1 404"))
+    }
+}

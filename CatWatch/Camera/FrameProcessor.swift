@@ -9,8 +9,13 @@ struct DetectionConfig {
 }
 
 struct FrameResult {
+    /// Detections at or above the alert threshold.
     let detections: [CatDetection]
-    /// Only rendered when a cat was seen, for snapshots.
+    /// Every possible cat down to 10%, for the live view.
+    let allDetections: [CatDetection]
+    /// The crops the detector looked at this pass.
+    let regions: [CGRect]
+    /// Only rendered when a cat was seen (for snapshots) or a browser is watching.
     let image: CGImage?
     let size: CGSize
 }
@@ -18,6 +23,8 @@ struct FrameResult {
 /// Runs on the camera's video queue: throttles frames and runs the detector.
 final class FrameProcessor: @unchecked Sendable {
     var onResult: ((FrameResult) -> Void)?
+    /// Whether a browser is watching, so every pass needs a picture.
+    var wantsPreview: (@Sendable () -> Bool)?
 
     let recorder = TrainingRecorder()
     private let detector = CatDetector()
@@ -57,7 +64,8 @@ final class FrameProcessor: @unchecked Sendable {
                 if let full { recorder.save(full, name: name, zone: cfg.zone) }
             }
         }
-        let image = detections.isEmpty ? nil : (full ?? ciContext.createCGImage(ciImage, from: ciImage.extent))
-        onResult?(FrameResult(detections: detections, image: image, size: frame))
+        let needImage = !detections.isEmpty || (wantsPreview?() ?? false)
+        let image = needImage ? (full ?? ciContext.createCGImage(ciImage, from: ciImage.extent)) : nil
+        onResult?(FrameResult(detections: detections, allDetections: all, regions: regions, image: image, size: frame))
     }
 }

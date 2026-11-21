@@ -18,6 +18,10 @@ final class AppSettings: ObservableObject {
     /// Detection passes per second.
     @Published var detectionRate: Double { didSet { defaults.set(detectionRate, forKey: "detectionRate") } }
     @Published var useUltraWide: Bool { didSet { defaults.set(useUltraWide, forKey: "useUltraWide") } }
+    /// Serve a live view to browsers on the same Wi-Fi.
+    @Published var webViewEnabled: Bool { didSet { defaults.set(webViewEnabled, forKey: "webViewEnabled") } }
+    /// PIN the browser must give. Generated once.
+    @Published var webPin: String { didSet { defaults.set(webPin, forKey: "webPin") } }
     /// Save frames from the camera for training a custom cat model.
     @Published var recordTraining: Bool { didSet { defaults.set(recordTraining, forKey: "recordTraining") } }
 
@@ -37,6 +41,7 @@ final class AppSettings: ObservableObject {
             "detectionRate": 3.0,
             "useUltraWide": false,
             "recordTraining": false,
+            "webViewEnabled": false,
             "priority": PushoverPriority.high.rawValue,
             "sound": "",
             "healthAlerts": true,
@@ -51,6 +56,10 @@ final class AppSettings: ObservableObject {
         detectionRate = defaults.double(forKey: "detectionRate")
         useUltraWide = defaults.bool(forKey: "useUltraWide")
         recordTraining = defaults.bool(forKey: "recordTraining")
+        webViewEnabled = defaults.bool(forKey: "webViewEnabled")
+        let pin = defaults.string(forKey: "webPin") ?? String(format: "%04d", Int.random(in: 0...9999))
+        webPin = pin
+        defaults.set(pin, forKey: "webPin")
         priority = defaults.integer(forKey: "priority")
         sound = defaults.string(forKey: "sound") ?? ""
         healthAlerts = defaults.bool(forKey: "healthAlerts")
