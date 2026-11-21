@@ -11,11 +11,14 @@ final class MonitorController: ObservableObject {
     @Published private(set) var lastFrameAt: Date?
     @Published private(set) var lastAlertAt: Date?
     @Published private(set) var lastAlertError: String?
+    /// The picture is too dark for the detector to see a cat.
+    @Published private(set) var isTooDark = false
     @Published var errorMessage: String?
 
     let camera = CameraService()
     let web = LiveServer()
     private var lastStatusAt = Date.distantPast
+    private var darkness = DarknessMonitor()
     private let processor = FrameProcessor()
     private let settings: AppSettings
     private let store: EventStore
@@ -95,6 +98,20 @@ final class MonitorController: ObservableObject {
         }
     }
 
+    // MARK: - Darkness
+
+    /// Always sent (even with health alerts off): a silent night would look like "no cat".
+    private func darknessChanged(_ dark: Bool) {
+        isTooDark = dark
+        let message = dark
+            ? "It's too dark for CatWatch to see, so it can't spot your cat. It will tell you when it can see again."
+            : "CatWatch can see again and is watching for your cat."
+        let client = settings.pushover
+        let sound = settings.sound
+        Task { try? await client.send(title: dark ? "🌙 CatWatch" : "☀️ CatWatch", message: message, priority: .normal, sound: sound) }
+        if web.isRunning { publishStatus() }
+    }
+
     // MARK: - Web view
 
     private func updateWebServer() {
@@ -134,6 +151,7 @@ final class MonitorController: ObservableObject {
         let best = detections.map(\.confidence).max()
         let status: [String: Any] = [
             "running": isRunning,
+            "dark": isTooDark,
             "cats": best.map { Int($0 * 100) } ?? 0,
             "battery": level < 0 ? "?" : "\(Int(level * 100))%",
             "charging": state == .charging || state == .full,
@@ -178,6 +196,9 @@ final class MonitorController: ObservableObject {
             return d
         }
         detections = marked
+        if let brightness = result.brightness, let dark = darkness.update(brightness: brightness, at: Date()) {
+            darknessChanged(dark)
+        }
         if web.isRunning { publishLiveView(result, zone: zone) }
 
         let inZone = marked.filter(\.inZone)

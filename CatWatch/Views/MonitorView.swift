@@ -132,6 +132,9 @@ struct MonitorView: View {
                     Text("No zone: any cat alerts").font(.caption).foregroundStyle(.yellow)
                 }
             }
+            if monitor.isTooDark {
+                Text("Too dark to see. CatWatch will tell you when it can see again.").font(.caption).foregroundStyle(.orange)
+            }
             if let last = monitor.lastAlertAt {
                 Text("Last alert \(last.formatted(.relative(presentation: .named)))").font(.caption)
             }

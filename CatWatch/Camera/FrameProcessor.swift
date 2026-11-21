@@ -15,6 +15,8 @@ struct FrameResult {
     let allDetections: [CatDetection]
     /// The crops the detector looked at this pass.
     let regions: [CGRect]
+    /// Average brightness of the frame (0...255), nil if it couldn't be measured.
+    let brightness: Double?
     /// Only rendered when a cat was seen (for snapshots) or a browser is watching.
     let image: CGImage?
     let size: CGSize
@@ -48,7 +50,8 @@ final class FrameProcessor: @unchecked Sendable {
 
         let ciImage = CIImage(cvPixelBuffer: pixelBuffer)
         let frame = ciImage.extent.size
-        let moved = MotionDetector.thumbnail(pixelBuffer).map { motion.update(thumb: $0, zone: cfg.zone) } ?? (fraction: 0, box: nil)
+        let thumb = MotionDetector.thumbnail(pixelBuffer)
+        let moved = thumb.map { motion.update(thumb: $0, zone: cfg.zone) } ?? (fraction: 0, box: nil)
         let regions = planner.regions(zone: cfg.zone, frame: frame, motionBox: moved.box, now: now)
 
         // Detect down to 10% so a weak sighting gets a closer look (and training can keep it);
@@ -66,6 +69,7 @@ final class FrameProcessor: @unchecked Sendable {
         }
         let needImage = !detections.isEmpty || (wantsPreview?() ?? false)
         let image = needImage ? (full ?? ciContext.createCGImage(ciImage, from: ciImage.extent)) : nil
-        onResult?(FrameResult(detections: detections, allDetections: all, regions: regions, image: image, size: frame))
+        onResult?(FrameResult(detections: detections, allDetections: all, regions: regions,
+                              brightness: thumb.map(DarknessMonitor.averageBrightness), image: image, size: frame))
     }
 }

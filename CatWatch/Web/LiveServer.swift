@@ -176,7 +176,7 @@ final class LiveServer: @unchecked Sendable {
         const s = await (await fetch("/status.json?" + q)).json();
         const parts = [
           s.running ? '<span class="ok">● Watching</span>' : '<span class="bad">● Paused</span>',
-          s.cats ? "Cat " + s.cats + "%" : "No cat",
+          s.dark ? '<span class="bad">Too dark to see</span>' : (s.cats ? "Cat " + s.cats + "%" : "No cat"),
           "Battery " + s.battery + (s.charging ? " ⚡" : ""),
           s.hot ? '<span class="bad">Hot</span>' : "",
           s.lastAlert != null ? "Last alert " + ago(s.lastAlert) : "",

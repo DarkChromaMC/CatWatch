@@ -209,3 +209,34 @@ final class LiveServerTests: XCTestCase {
         XCTAssertTrue(body(server.respond(to: "/nope?pin=1")).hasPrefix("HTTP/1.1 404"))
     }
 }
+
+final class DarknessMonitorTests: XCTestCase {
+    func testNeedsToStayDarkBeforeSwitching() {
+        var m = DarknessMonitor()
+        let t0 = Date(timeIntervalSince1970: 0)
+        XCTAssertNil(m.update(brightness: 10, at: t0))
+        XCTAssertNil(m.update(brightness: 10, at: t0.addingTimeInterval(60)))
+        // A brief bright frame (headlight) restarts the wait.
+        XCTAssertNil(m.update(brightness: 120, at: t0.addingTimeInterval(90)))
+        XCTAssertNil(m.update(brightness: 10, at: t0.addingTimeInterval(100)))
+        XCTAssertNil(m.update(brightness: 10, at: t0.addingTimeInterval(200)))
+        XCTAssertEqual(m.update(brightness: 10, at: t0.addingTimeInterval(221)), true)
+        XCTAssertTrue(m.isDark)
+    }
+
+    func testHysteresisBand() {
+        var m = DarknessMonitor()
+        let t0 = Date(timeIntervalSince1970: 0)
+        _ = m.update(brightness: 5, at: t0)
+        XCTAssertEqual(m.update(brightness: 5, at: t0.addingTimeInterval(121)), true)
+        // Between the thresholds: stays dark.
+        _ = m.update(brightness: 35, at: t0.addingTimeInterval(130))
+        XCTAssertNil(m.update(brightness: 35, at: t0.addingTimeInterval(400)))
+        _ = m.update(brightness: 80, at: t0.addingTimeInterval(500))
+        XCTAssertEqual(m.update(brightness: 80, at: t0.addingTimeInterval(621)), false)
+    }
+
+    func testAverageBrightness() {
+        XCTAssertEqual(DarknessMonitor.averageBrightness([0, 100, 200]), 100)
+    }
+}
