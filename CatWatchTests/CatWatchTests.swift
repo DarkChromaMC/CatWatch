@@ -239,4 +239,44 @@ final class DarknessMonitorTests: XCTestCase {
     func testAverageBrightness() {
         XCTAssertEqual(DarknessMonitor.averageBrightness([0, 100, 200]), 100)
     }
+
+    // MARK: - Hen filter
+
+    func testVerifierCropIsSquareAroundBox() {
+        let frame = CGSize(width: 1080, height: 1920)
+        let box = CGRect(x: 0.5, y: 0.5, width: 0.1, height: 0.05) // 108 x 96 px
+        let r = CatVerifier.cropRegion(box: box, frame: frame)
+        XCTAssertEqual(r.width * 1080, r.height * 1920, accuracy: 0.5)   // square in pixels
+        XCTAssertEqual(r.width * 1080, 108 * 1.6, accuracy: 0.5)
+        XCTAssertEqual(r.midX, box.midX, accuracy: 0.001)
+        XCTAssertEqual(r.midY, box.midY, accuracy: 0.001)
+    }
+
+    func testVerifierCropHasMinimumSizeAndStaysInFrame() {
+        let frame = CGSize(width: 1080, height: 1920)
+        let tiny = CatVerifier.cropRegion(box: CGRect(x: 0.99, y: 0.0, width: 0.01, height: 0.005), frame: frame)
+        XCTAssertEqual(tiny.width * 1080, 80, accuracy: 0.5)
+        XCTAssertLessThanOrEqual(tiny.maxX, 1.0001)
+        XCTAssertGreaterThanOrEqual(tiny.minY, 0)
+        let huge = CatVerifier.cropRegion(box: CGRect(x: 0, y: 0, width: 1, height: 1), frame: frame)
+        XCTAssertEqual(huge.width, 1, accuracy: 0.001)
+        XCTAssertLessThanOrEqual(huge.maxY, 1.0001)
+    }
+
+    func testRejectedOnlyWhenVerifierSaysNotCat() {
+        var d = CatDetection(box: .zero, confidence: 0.6)
+        XCTAssertFalse(d.isRejected)            // not checked: never blocked
+        d.catScore = 0.05
+        XCTAssertTrue(d.isRejected)
+        d.catScore = 0.9
+        XCTAssertFalse(d.isRejected)
+    }
+
+    func testFrameNameIncludesVerifierScore() {
+        let r = TrainingRecorder()
+        r.deleteAll(); defer { r.deleteAll() }
+        let name = r.frameName(now: 1000, motion: 0.01, isMotion: true, catConfidence: 0.6, catScore: 0.12)
+        XCTAssertNotNil(name)
+        XCTAssertTrue(name!.hasSuffix("_m10_c60_v12.jpg"), name!)
+    }
 }

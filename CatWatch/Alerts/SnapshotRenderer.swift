@@ -42,11 +42,13 @@ enum SnapshotRenderer {
             for d in detections {
                 let r = CGRect(x: d.box.minX * size.width, y: d.box.minY * size.height,
                                width: d.box.width * size.width, height: d.box.height * size.height)
-                let color = d.confidence < minConfidence ? UIColor.systemGray : (d.inZone ? UIColor.systemRed : UIColor.systemYellow)
+                let color = d.confidence < minConfidence || d.isRejected
+                    ? UIColor.systemGray : (d.inZone ? UIColor.systemRed : UIColor.systemYellow)
                 cg.setStrokeColor(color.cgColor)
                 cg.setLineWidth(4)
                 cg.stroke(r)
-                label("Cat \(Int(d.confidence * 100))%", at: CGPoint(x: r.minX, y: max(0, r.minY - 28)))
+                let text = d.isRejected ? "Not your cat (\(Int((d.catScore ?? 0) * 100))%)" : "Cat \(Int(d.confidence * 100))%"
+                label(text, at: CGPoint(x: r.minX, y: max(0, r.minY - 28)))
             }
 
             let stamp = date.formatted(date: .abbreviated, time: .standard)

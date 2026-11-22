@@ -7,6 +7,10 @@ struct CatDetection: Identifiable, Equatable {
     let box: CGRect
     let confidence: Float
     var inZone: Bool = false
+    /// Chance it's the user's cat from `CatVerifier` (nil = not checked).
+    var catScore: Float? = nil
+    /// The verifier thinks this is a hen (or something else), so it never alerts.
+    var isRejected: Bool { (catScore ?? 1) < CatVerifier.threshold }
 }
 
 /// Wraps Apple's on-device animal classifier (cats and dogs).
