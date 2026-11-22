@@ -279,4 +279,29 @@ final class DarknessMonitorTests: XCTestCase {
         XCTAssertNotNil(name)
         XCTAssertTrue(name!.hasSuffix("_m10_c60_v12.jpg"), name!)
     }
+
+    // MARK: - Picture rotation
+
+    func testGravityToQuarterTurns() {
+        XCTAssertEqual(OrientationMonitor.quarterTurns(gravityX: 0, gravityY: -1), 0)
+        XCTAssertEqual(OrientationMonitor.quarterTurns(gravityX: -1, gravityY: 0.1), 3)
+        XCTAssertEqual(OrientationMonitor.quarterTurns(gravityX: 0.95, gravityY: 0), 1)
+        XCTAssertEqual(OrientationMonitor.quarterTurns(gravityX: 0, gravityY: 0.9), 2)
+        XCTAssertNil(OrientationMonitor.quarterTurns(gravityX: 0.1, gravityY: 0.1)) // lying flat
+    }
+
+    func testRotationGeometry() {
+        let r = CGRect(x: 0.1, y: 0.2, width: 0.3, height: 0.1)
+        XCTAssertEqual(PictureRotation.point(CGPoint(x: 0, y: 0), turns: 1), CGPoint(x: 1, y: 0))
+        XCTAssertEqual(PictureRotation.point(CGPoint(x: 0, y: 0), turns: 3), CGPoint(x: 0, y: 1))
+        let r1 = PictureRotation.rect(r, turns: 1)
+        XCTAssertEqual(r1.minX, 0.7, accuracy: 1e-9); XCTAssertEqual(r1.minY, 0.1, accuracy: 1e-9)
+        XCTAssertEqual(r1.width, 0.1, accuracy: 1e-9); XCTAssertEqual(r1.height, 0.3, accuracy: 1e-9)
+        for t in 0..<4 {   // four turns of one quarter = back where it started
+            var x = r
+            for _ in 0..<4 { x = PictureRotation.rect(x, turns: 1) }
+            XCTAssertEqual(x.minX, r.minX, accuracy: 1e-9, "\(t)")
+        }
+        XCTAssertEqual(PictureRotation.rect(PictureRotation.rect(r, turns: 1), turns: 3).minY, r.minY, accuracy: 1e-9)
+    }
 }
