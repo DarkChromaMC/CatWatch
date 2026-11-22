@@ -72,6 +72,10 @@ struct SettingsView: View {
                     }
                     if settings.webViewEnabled {
                         LabeledContent("PIN", value: settings.webPin)
+                        if let problem = monitor.webError {
+                            Text("Not reachable yet: \(problem). Check iPhone Settings › Privacy & Security › Local Network › CatWatch.")
+                                .font(.footnote).foregroundStyle(.red)
+                        }
                         if let address = LiveServer.wifiAddress() {
                             let link = "http://\(address):\(LiveServer.port)/?pin=\(settings.webPin)"
                             Text(link).font(.footnote.monospaced()).textSelection(.enabled)

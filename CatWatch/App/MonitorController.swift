@@ -144,6 +144,9 @@ final class MonitorController: ObservableObject {
 
     // MARK: - Web view
 
+    /// Why the web view isn't reachable, if it isn't.
+    var webError: String? { web.lastError }
+
     private func updateWebServer() {
         web.pin = settings.webPin
         if settings.webViewEnabled {

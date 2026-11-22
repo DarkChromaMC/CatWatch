@@ -38,11 +38,36 @@ final class LiveServer: @unchecked Sendable {
     func update(status data: Data) { lock.withLock { status = data } }
     func setEventsDirectory(_ url: URL) { lock.withLock { eventsDirectory = url } }
 
+    private var wanted = false
+    private var _lastError: String?
+    /// Why the server isn't listening (nil while it is), for Settings.
+    var lastError: String? { lock.withLock { _lastError } }
+
     func start() throws {
         try lock.withLock {
+            wanted = true
             guard listener == nil else { return }
             let l = try NWListener(using: .tcp, on: NWEndpoint.Port(rawValue: Self.port)!)
             l.newConnectionHandler = { [weak self] connection in self?.serve(connection) }
+            l.stateUpdateHandler = { [weak self, weak l] state in
+                guard let self, let l else { return }
+                switch state {
+                case .ready:
+                    self.lock.withLock { self._lastError = nil }
+                case .failed(let error), .waiting(let error):
+                    // e.g. Local Network permission not granted yet, or the port is busy: try again shortly.
+                    self.lock.withLock {
+                        self._lastError = error.localizedDescription
+                        if self.listener === l { self.listener = nil }
+                    }
+                    l.cancel()
+                    self.queue.asyncAfter(deadline: .now() + 5) { [weak self] in
+                        guard let self, self.lock.withLock({ self.wanted }) else { return }
+                        try? self.start()
+                    }
+                default: break
+                }
+            }
             l.start(queue: queue)
             listener = l
         }
@@ -50,6 +75,7 @@ final class LiveServer: @unchecked Sendable {
 
     func stop() {
         lock.withLock {
+            wanted = false
             listener?.cancel()
             listener = nil
         }
