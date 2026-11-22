@@ -304,4 +304,30 @@ final class DarknessMonitorTests: XCTestCase {
         }
         XCTAssertEqual(PictureRotation.rect(PictureRotation.rect(r, turns: 1), turns: 3).minY, r.minY, accuracy: 1e-9)
     }
+
+    // MARK: - Web view actions
+
+    func testActionNeedsPinAndKnownAction() {
+        let server = LiveServer()
+        server.pin = "4321"
+        final class Box: @unchecked Sendable { var calls: [(String, [String: String])] = [] }
+        let box = Box()
+        server.onAction = { action, params in box.calls.append((action, params)) }
+        let noPin = String(decoding: server.respond(to: "/action?do=clear"), as: UTF8.self)
+        XCTAssertTrue(noPin.hasPrefix("HTTP/1.1 403"))
+        let unknown = String(decoding: server.respond(to: "/action?pin=4321&do=format"), as: UTF8.self)
+        XCTAssertTrue(unknown.hasPrefix("HTTP/1.1 404"))
+        let ok = String(decoding: server.respond(to: "/action?pin=4321&do=label&id=abc&as=cat"), as: UTF8.self)
+        XCTAssertTrue(ok.hasPrefix("HTTP/1.1 200"))
+        XCTAssertEqual(box.calls.count, 1)
+        XCTAssertEqual(box.calls.first?.0, "label")
+        XCTAssertEqual(box.calls.first?.1, ["do": "label", "id": "abc", "as": "cat"])
+    }
+
+    func testPageHasNewControls() {
+        XCTAssertTrue(LiveServer.page.contains("Snooze 30 min"))
+        XCTAssertTrue(LiveServer.page.contains("Not my cat"))
+        XCTAssertTrue(LiveServer.page.contains("Clear all"))
+        XCTAssertTrue(LiveServer.page.contains("toggle(\"full\")"))
+    }
 }

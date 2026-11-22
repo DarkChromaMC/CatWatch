@@ -15,6 +15,14 @@ final class LiveServer: @unchecked Sendable {
     private var lastViewer = Date.distantPast
     private var _pin = ""
     private var eventsDirectory: URL?
+    private var _onAction: (@Sendable (String, [String: String]) -> Void)?
+
+    /// Called (on the server queue) for `/action?do=…` requests from the page's buttons.
+    var onAction: (@Sendable (String, [String: String]) -> Void)? {
+        get { lock.withLock { _onAction } }
+        set { lock.withLock { _onAction = newValue } }
+    }
+    static let actions: Set<String> = ["dismiss", "clear", "label", "snooze", "pause", "resume"]
 
     var pin: String {
         get { lock.withLock { _pin } }
@@ -84,6 +92,14 @@ final class LiveServer: @unchecked Sendable {
             return Self.http(200, "image/jpeg", data)
         case "/status.json":
             return Self.http(200, "application/json", lock.withLock { status })
+        case "/action":
+            var params: [String: String] = [:]
+            for item in components?.queryItems ?? [] where item.name != "pin" { params[item.name] = item.value ?? "" }
+            guard let action = params["do"], Self.actions.contains(action) else {
+                return Self.http(404, "text/plain", Data("Unknown action".utf8))
+            }
+            onAction?(action, params)
+            return Self.http(200, "application/json", Data("{\"ok\":true}".utf8))
         default:
             if path.hasPrefix("/event/"), path.hasSuffix(".jpg"),
                let id = UUID(uuidString: String(path.dropFirst("/event/".count).dropLast(".jpg".count))),
@@ -133,6 +149,15 @@ final class LiveServer: @unchecked Sendable {
     .events a { color: #bbb; text-decoration: none; font-size: 13px; }
     .events img { width: 100%; border-radius: 6px; display: block; }
     input, button { font: inherit; padding: 8px 12px; border-radius: 8px; border: 1px solid #444; background: #222; color: #eee; }
+    button { cursor: pointer; } button.on { background: #2a4; border-color: #2a4; } button.no { background: #a33; border-color: #a33; }
+    #live { cursor: zoom-in; }
+    #live.full { position: fixed; inset: 0; width: 100vw; height: 100vh; object-fit: contain; border-radius: 0; background: #000; z-index: 9; cursor: zoom-out; }
+    .controls { display: flex; flex-wrap: wrap; gap: 8px; margin: 10px 0 18px; }
+    .head { display: flex; justify-content: space-between; align-items: center; }
+    .card { font-size: 13px; color: #bbb; }
+    .card .btns { display: flex; gap: 4px; margin-top: 4px; }
+    .card .btns button { flex: 1; padding: 6px 4px; font-size: 12px; }
+    .empty { color: #777; }
     </style>
     """
 
@@ -150,9 +175,10 @@ final class LiveServer: @unchecked Sendable {
     static let page = """
     <!doctype html><html><head><title>CatWatch</title>\(style)</head><body><main>
     <h1>🐈 CatWatch</h1>
-    <img id="live" alt="Live view">
+    <img id="live" alt="Live view" title="Tap for full screen">
     <div class="row" id="status">Connecting…</div>
-    <h1>Recent alerts</h1>
+    <div class="controls" id="controls"></div>
+    <div class="head"><h1>Alerts (last 24 h)</h1><button id="clear">Clear all</button></div>
     <div class="events" id="events"></div>
     </main>
     <script>
@@ -169,6 +195,16 @@ final class LiveServer: @unchecked Sendable {
       img.src = "/frame.jpg?" + q + "&t=" + Date.now();
     }
     setInterval(nextFrame, 350);
+    live.onclick = () => live.classList.toggle("full");
+    async function act(params) {
+      try { await fetch("/action?" + q + "&" + new URLSearchParams(params)); } catch (e) {}
+      refresh();
+    }
+    document.getElementById("clear").onclick = () => { if (confirm("Delete all alerts from the phone?")) act({do: "clear"}); };
+    document.addEventListener("click", e => {
+      const b = e.target.closest("button[data-do]");
+      if (b) act(Object.assign({}, b.dataset));
+    });
     function ago(s) { return s < 60 ? Math.round(s) + " s ago" : s < 3600 ? Math.round(s / 60) + " min ago" : Math.round(s / 3600) + " h ago"; }
     let shownEvents = "";
     async function refresh() {
@@ -180,14 +216,23 @@ final class LiveServer: @unchecked Sendable {
           "Battery " + s.battery + (s.charging ? " ⚡" : ""),
           s.hot ? '<span class="bad">Hot</span>' : "",
           s.lastAlert != null ? "Last alert " + ago(s.lastAlert) : "",
+          s.snooze > 0 ? '<span class="bad">Alerts snoozed ' + Math.ceil(s.snooze / 60) + ' min</span>' : "",
         ];
         document.getElementById("status").innerHTML = parts.filter(Boolean).join(" · ");
-        const key = s.events.map(e => e.id).join();
+        document.getElementById("controls").innerHTML =
+          (s.running ? '<button data-do="pause">Pause watching</button>' : '<button class="on" data-do="resume">Resume watching</button>') +
+          (s.snooze > 0 ? '<button data-do="snooze" data-min="0">Cancel snooze</button>'
+                        : '<button data-do="snooze" data-min="30">Snooze 30 min</button><button data-do="snooze" data-min="60">Snooze 1 h</button>');
+        const key = s.events.map(e => e.id + (e.label || "")).join();
         if (key !== shownEvents) {
           shownEvents = key;
-          document.getElementById("events").innerHTML = s.events.map(e =>
-            `<a href="/event/${e.id}.jpg?${q}" target="_blank"><img loading="lazy" src="/event/${e.id}.jpg?${q}">` +
-            `${new Date(e.date).toLocaleString()} · ${e.confidence}%${e.sent ? "" : " · not sent"}</a>`).join("");
+          document.getElementById("events").innerHTML = s.events.length ? s.events.map(e =>
+            `<div class="card"><a href="/event/${e.id}.jpg?${q}" target="_blank"><img loading="lazy" src="/event/${e.id}.jpg?${q}"></a>` +
+            `${new Date(e.date).toLocaleString()} · ${e.confidence}%${e.sent ? "" : " · " + (e.error || "not sent")}` +
+            `<div class="btns"><button data-do="label" data-id="${e.id}" data-as="cat" class="${e.label === "cat" ? "on" : ""}">My cat</button>` +
+            `<button data-do="label" data-id="${e.id}" data-as="notcat" class="${e.label === "notcat" ? "no" : ""}">Not my cat</button>` +
+            `<button data-do="dismiss" data-id="${e.id}">✕</button></div></div>`).join("")
+            : '<p class="empty">No alerts in the last 24 hours.</p>';
         }
       } catch (e) {
         document.getElementById("status").innerHTML = '<span class="bad">● Can\\'t reach the phone</span>';

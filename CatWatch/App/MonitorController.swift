@@ -39,6 +39,9 @@ final class MonitorController: ObservableObject {
         camera.onFrame = { @Sendable [processor] buffer in processor.process(buffer) }
         processor.wantsPreview = { @Sendable [web] in web.hasViewer }
         web.setEventsDirectory(store.directoryURL)
+        web.onAction = { @Sendable [weak self] action, params in
+            Task { @MainActor in await self?.perform(action, params) }
+        }
 
         settings.objectWillChange
             .receive(on: RunLoop.main)
@@ -98,6 +101,31 @@ final class MonitorController: ObservableObject {
         } catch {
             return error.localizedDescription
         }
+    }
+
+    // MARK: - Web view buttons
+
+    /// While set and in the future, alerts are recorded but not pushed.
+    @Published private(set) var snoozedUntil: Date?
+
+    func snooze(minutes: Int) {
+        snoozedUntil = minutes > 0 ? Date().addingTimeInterval(TimeInterval(minutes) * 60) : nil
+    }
+
+    private var isSnoozed: Bool { (snoozedUntil ?? .distantPast) > Date() }
+
+    private func perform(_ action: String, _ params: [String: String]) async {
+        let id = params["id"].flatMap(UUID.init(uuidString:))
+        switch action {
+        case "dismiss": if let id { store.delete(id: id) }
+        case "clear": store.deleteAll()
+        case "label": if let id, let label = params["as"] { store.label(id, as: label) }
+        case "snooze": snooze(minutes: min(max(Int(params["min"] ?? "") ?? 0, 0), 24 * 60))
+        case "pause": stop()
+        case "resume": await start()
+        default: break
+        }
+        publishStatus()
     }
 
     // MARK: - Darkness
@@ -165,11 +193,13 @@ final class MonitorController: ObservableObject {
             "battery": level < 0 ? "?" : "\(Int(level * 100))%",
             "charging": state == .charging || state == .full,
             "rotation": pictureRotation * 90,
+            "snooze": isSnoozed ? snoozedUntil!.timeIntervalSinceNow : 0,
             "hot": ProcessInfo.processInfo.thermalState.rawValue >= ProcessInfo.ThermalState.serious.rawValue,
             "lastAlert": lastAlertAt.map { Date().timeIntervalSince($0) as Any } ?? NSNull(),
-            "events": store.events.prefix(12).map { e -> [String: Any] in
+            "events": store.recent(hours: 24, limit: 24).map { e -> [String: Any] in
                 ["id": e.id.uuidString, "date": ISO8601DateFormatter().string(from: e.date),
-                 "confidence": Int(e.confidence * 100), "sent": e.alertSent]
+                 "confidence": Int(e.confidence * 100), "sent": e.alertSent,
+                 "error": e.alertError ?? "", "label": e.label ?? ""]
             },
         ]
         if let data = try? JSONSerialization.data(withJSONObject: status) { web.update(status: data) }
@@ -222,13 +252,19 @@ final class MonitorController: ObservableObject {
         let zone = settings.zone
         let now = Date()
         let rotation = pictureRotation
-        let jpeg = await Task.detached(priority: .userInitiated) {
-            SnapshotRenderer.jpeg(from: image, zone: zone, detections: detections, date: now, rotation: rotation)
+        let (jpeg, raw) = await Task.detached(priority: .userInitiated) {
+            (SnapshotRenderer.jpeg(from: image, zone: zone, detections: detections, date: now, rotation: rotation),
+             UIImage(cgImage: image).jpegData(compressionQuality: 0.9))
         }.value
         guard let jpeg else { return }
 
-        let event = store.add(confidence: confidence, jpeg: jpeg)
+        let trigger = detections.filter(\.inZone).max { $0.confidence < $1.confidence }?.box
+        let event = store.add(confidence: confidence, jpeg: jpeg, raw: raw, box: trigger)
         lastAlertAt = now
+        if isSnoozed {
+            store.markAlert(event.id, sent: false, error: "snoozed")
+            return
+        }
         let message = zone.isValid
             ? "Cat in the no-go zone (\(Int(confidence * 100))% sure)."
             : "Cat spotted (\(Int(confidence * 100))% sure)."
