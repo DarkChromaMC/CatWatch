@@ -5,6 +5,8 @@ struct DetectionConfig {
     var rate: Double = 3
     var minConfidence: Float = 0.5
     var recordTraining = false
+    /// Ask `CatVerifier` before alerting, so hens don't count.
+    var ignoreHens = true
     var zone = Zone()
 }
 
@@ -30,6 +32,7 @@ final class FrameProcessor: @unchecked Sendable {
 
     let recorder = TrainingRecorder()
     private let detector = CatDetector()
+    private let verifier = CatVerifier()
     private var motion = MotionDetector()
     private var planner = ScanPlanner()
     private let ciContext = CIContext()
@@ -56,13 +59,20 @@ final class FrameProcessor: @unchecked Sendable {
 
         // Detect down to 10% so a weak sighting gets a closer look (and training can keep it);
         // alerts use the user's threshold.
-        let all = (try? detector.detect(in: pixelBuffer, minConfidence: min(cfg.minConfidence, 0.1), regions: regions)) ?? []
+        var all = (try? detector.detect(in: pixelBuffer, minConfidence: min(cfg.minConfidence, 0.1), regions: regions)) ?? []
         if let best = all.max(by: { $0.confidence < $1.confidence }) { planner.noteSighting(best.box, now: now) }
-        let detections = all.filter { $0.confidence >= cfg.minConfidence }
+        // Second opinion only for sightings that would alert (cheap: a few per minute at most).
+        if cfg.ignoreHens {
+            for i in all.indices where all[i].confidence >= cfg.minConfidence {
+                all[i].catScore = verifier.catProbability(in: pixelBuffer, box: all[i].box)
+            }
+        }
+        let detections = all.filter { $0.confidence >= cfg.minConfidence && !$0.isRejected }
         var full: CGImage?
         if cfg.recordTraining {
-            let best = all.map { $0.confidence }.max() ?? 0
-            if let name = recorder.frameName(now: now, motion: moved.fraction, isMotion: moved.box != nil, catConfidence: best) {
+            let best = all.max { $0.confidence < $1.confidence }
+            if let name = recorder.frameName(now: now, motion: moved.fraction, isMotion: moved.box != nil,
+                                             catConfidence: best?.confidence ?? 0, catScore: best?.catScore) {
                 full = ciContext.createCGImage(ciImage, from: ciImage.extent)
                 if let full { recorder.save(full, name: name, zone: cfg.zone) }
             }

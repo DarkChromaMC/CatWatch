@@ -34,7 +34,7 @@ final class TrainingRecorder: @unchecked Sendable {
     }
 
     /// Returns a file name when this frame should be kept. Called on the video queue.
-    func frameName(now: CFTimeInterval, motion: Double, isMotion: Bool, catConfidence: Float) -> String? {
+    func frameName(now: CFTimeInterval, motion: Double, isMotion: Bool, catConfidence: Float, catScore: Float? = nil) -> String? {
         lock.lock(); defer { lock.unlock() }
         guard count < Self.maxFrames, now - lastSaved >= Self.minInterval else { return nil }
         recentSaves.removeAll { now - $0 > 3600 }
@@ -42,6 +42,7 @@ final class TrainingRecorder: @unchecked Sendable {
         let tag: String
         if catConfidence > 0 || (isMotion && (!busy || now - lastSaved >= Self.busyInterval)) {
             tag = "m\(Int((motion * 1000).rounded()))_c\(Int((catConfidence * 100).rounded()))"
+                + (catScore.map { "_v\(Int(($0 * 100).rounded()))" } ?? "")
         } else if now - lastBaseline >= Self.baselineInterval {
             tag = "base"
         } else {

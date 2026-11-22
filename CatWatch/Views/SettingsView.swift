@@ -52,12 +52,13 @@ struct SettingsView: View {
                     Slider(value: $settings.minConfidence, in: 0.2...0.95, step: 0.05)
                     Stepper("Sightings before alert: \(settings.requiredHits)", value: $settings.requiredHits, in: 1...6)
                     Stepper("Checks per second: \(settings.detectionRate.formatted())", value: $settings.detectionRate, in: 1...8, step: 1)
+                    Toggle("Ignore hens", isOn: $settings.ignoreHens)
                     Toggle("Ultra-wide lens", isOn: $settings.useUltraWide)
                         .onChange(of: settings.useUltraWide) { _, _ in Task { await monitor.restart() } }
                 } header: {
                     Text("Detection")
                 } footer: {
-                    Text("Lower confidence catches more but may false-alarm. Requiring 2+ sightings filters one-off glitches. Ultra-wide sees more of the yard but makes the cat smaller.")
+                    Text("Lower confidence catches more but may false-alarm. Requiring 2+ sightings filters one-off glitches. Ignore hens double-checks each sighting with a model trained on your garden; turn it off if it ever misses your cat. Ultra-wide sees more of the yard but makes the cat smaller.")
                 }
 
                 Section {

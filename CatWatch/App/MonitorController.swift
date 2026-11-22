@@ -177,7 +177,8 @@ final class MonitorController: ObservableObject {
         // objectWillChange fires before the new value lands; read on the next run loop turn.
         DispatchQueue.main.async { [self] in
             processor.config = DetectionConfig(rate: settings.detectionRate, minConfidence: Float(settings.minConfidence),
-                                               recordTraining: settings.recordTraining, zone: settings.zone)
+                                               recordTraining: settings.recordTraining, ignoreHens: settings.ignoreHens,
+                                               zone: settings.zone)
             gate.requiredHits = settings.requiredHits
             gate.cooldown = settings.cooldown
             updateWebServer()

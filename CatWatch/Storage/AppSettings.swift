@@ -24,6 +24,8 @@ final class AppSettings: ObservableObject {
     @Published var webPin: String { didSet { defaults.set(webPin, forKey: "webPin") } }
     /// Save frames from the camera for training a custom cat model.
     @Published var recordTraining: Bool { didSet { defaults.set(recordTraining, forKey: "recordTraining") } }
+    /// Check each sighting with the garden model so hens don't alert.
+    @Published var ignoreHens: Bool { didSet { defaults.set(ignoreHens, forKey: "ignoreHens") } }
 
     @Published var priority: Int { didSet { defaults.set(priority, forKey: "priority") } }
     @Published var sound: String { didSet { defaults.set(sound, forKey: "sound") } }
@@ -41,6 +43,7 @@ final class AppSettings: ObservableObject {
             "detectionRate": 3.0,
             "useUltraWide": false,
             "recordTraining": false,
+            "ignoreHens": true,
             "webViewEnabled": false,
             "priority": PushoverPriority.high.rawValue,
             "sound": "",
@@ -56,6 +59,7 @@ final class AppSettings: ObservableObject {
         detectionRate = defaults.double(forKey: "detectionRate")
         useUltraWide = defaults.bool(forKey: "useUltraWide")
         recordTraining = defaults.bool(forKey: "recordTraining")
+        ignoreHens = defaults.bool(forKey: "ignoreHens")
         webViewEnabled = defaults.bool(forKey: "webViewEnabled")
         let pin = defaults.string(forKey: "webPin") ?? String(format: "%04d", Int.random(in: 0...9999))
         webPin = pin
