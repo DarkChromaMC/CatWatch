@@ -28,7 +28,9 @@ jobs:
           brew install xcodegen
           xcodegen generate
 
+      # Tests run on the pull request; main only builds and publishes (saves ~6 min per release).
       - name: Run unit tests
+        if: github.event_name != 'push'
         run: |
           UDID=$(xcrun simctl list devices available -j | python3 -c '
           import json, sys
