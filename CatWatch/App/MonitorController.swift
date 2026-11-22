@@ -20,6 +20,7 @@ final class MonitorController: ObservableObject {
     private var lastStatusAt = Date.distantPast
     private var darkness = DarknessMonitor()
     private let processor = FrameProcessor()
+    private let orientation = OrientationMonitor()
     private let settings: AppSettings
     private let store: EventStore
     private var gate = TriggerGate()
@@ -45,6 +46,7 @@ final class MonitorController: ObservableObject {
             .store(in: &cancellables)
         applySettings()
         observeDevice()
+        orientation.start()
     }
 
     // MARK: - Control
@@ -136,12 +138,19 @@ final class MonitorController: ObservableObject {
         }
         let minConfidence = Float(settings.minConfidence)
         let web = self.web
+        let rotation = pictureRotation
         Task.detached(priority: .utility) {
             if let jpeg = SnapshotRenderer.jpeg(from: image, zone: zone, detections: all, date: Date(), maxDimension: 900,
-                                                minConfidence: minConfidence, regions: result.regions, quality: 0.6) {
+                                                minConfidence: minConfidence, regions: result.regions, quality: 0.6,
+                                                rotation: rotation) {
                 web.update(frame: jpeg)
             }
         }
+    }
+
+    /// Clockwise quarter turns for pictures leaving the phone: the user's choice, or from gravity.
+    private var pictureRotation: Int {
+        settings.pictureRotation >= 0 ? settings.pictureRotation : orientation.quarterTurns
     }
 
     private func publishStatus() {
@@ -155,6 +164,7 @@ final class MonitorController: ObservableObject {
             "cats": best.map { Int($0 * 100) } ?? 0,
             "battery": level < 0 ? "?" : "\(Int(level * 100))%",
             "charging": state == .charging || state == .full,
+            "rotation": pictureRotation * 90,
             "hot": ProcessInfo.processInfo.thermalState.rawValue >= ProcessInfo.ThermalState.serious.rawValue,
             "lastAlert": lastAlertAt.map { Date().timeIntervalSince($0) as Any } ?? NSNull(),
             "events": store.events.prefix(12).map { e -> [String: Any] in
@@ -211,8 +221,9 @@ final class MonitorController: ObservableObject {
     private func fireAlert(image: CGImage, detections: [CatDetection], confidence: Float) async {
         let zone = settings.zone
         let now = Date()
+        let rotation = pictureRotation
         let jpeg = await Task.detached(priority: .userInitiated) {
-            SnapshotRenderer.jpeg(from: image, zone: zone, detections: detections, date: now)
+            SnapshotRenderer.jpeg(from: image, zone: zone, detections: detections, date: now, rotation: rotation)
         }.value
         guard let jpeg else { return }
 

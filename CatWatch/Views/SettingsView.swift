@@ -63,6 +63,13 @@ struct SettingsView: View {
 
                 Section {
                     Toggle("Web view", isOn: $settings.webViewEnabled)
+                    Picker("Picture rotation", selection: $settings.pictureRotation) {
+                        Text("Automatic").tag(-1)
+                        Text("None").tag(0)
+                        Text("90° right").tag(1)
+                        Text("180°").tag(2)
+                        Text("90° left").tag(3)
+                    }
                     if settings.webViewEnabled {
                         LabeledContent("PIN", value: settings.webPin)
                         if let address = LiveServer.wifiAddress() {
