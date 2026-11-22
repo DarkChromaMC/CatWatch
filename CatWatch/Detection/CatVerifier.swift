@@ -5,7 +5,8 @@ import Vision
 /// Second opinion on each sighting: a small model trained on this garden's camera that tells
 /// the user's Siamese from the hens (and grass, feeders, birds) Apple's detector calls "cat".
 ///
-/// Trained on real frames from the camera (hens and everything else = not cat) plus the cat
+/// v2 (2026-11-22): trained on two evenings of camera frames incl. dusk (hens etc. = not cat),
+    /// 8 real frames of the cat at the feeder, plus the cat
 /// cut out of the user's photos and pasted into those frames at camera size.
 final class CatVerifier {
     /// Below this chance of being the cat, a sighting is treated as a hen and no alert is sent.
