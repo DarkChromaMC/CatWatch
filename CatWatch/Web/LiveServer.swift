@@ -22,6 +22,12 @@ final class LiveServer: @unchecked Sendable {
         get { lock.withLock { _onAction } }
         set { lock.withLock { _onAction = newValue } }
     }
+    /// Builds the hidden diagnostics page (runs on the server queue).
+    var onDebug: (@Sendable () -> Data)? {
+        get { lock.withLock { _onDebug } }
+        set { lock.withLock { _onDebug = newValue } }
+    }
+    private var _onDebug: (@Sendable () -> Data)?
     static let actions: Set<String> = ["dismiss", "clear", "label", "snooze", "pause", "resume"]
 
     var pin: String {
@@ -118,6 +124,8 @@ final class LiveServer: @unchecked Sendable {
             return Self.http(200, "image/jpeg", data)
         case "/status.json":
             return Self.http(200, "application/json", lock.withLock { status })
+        case "/debug":
+            return Self.http(200, "application/json", onDebug?() ?? Data("{}".utf8))
         case "/action":
             var params: [String: String] = [:]
             for item in components?.queryItems ?? [] where item.name != "pin" { params[item.name] = item.value ?? "" }

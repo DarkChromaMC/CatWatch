@@ -12,7 +12,7 @@ final class TrainingRecorder: @unchecked Sendable {
     static let baselineInterval: CFTimeInterval = 600
     /// Windy grass can look like motion all day; past this many frames in an hour, keep
     /// only possible cats and one frame a minute.
-    static let hourlyBudget = 200
+    static let hourlyBudget = 400
     static let busyInterval: CFTimeInterval = 60
 
     static var directory: URL {

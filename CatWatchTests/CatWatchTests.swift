@@ -165,6 +165,7 @@ final class ScanPlannerTests: XCTestCase {
 
     func testRegionsRotateTilesAndFocusOnSightings() {
         var planner = ScanPlanner()
+        planner.tilesPerPass = 1
         let zone = Zone(points: [CGPoint(x: 0, y: 0.5), CGPoint(x: 1, y: 0.5), CGPoint(x: 1, y: 0.9), CGPoint(x: 0, y: 0.9)])
         let first = planner.regions(zone: zone, frame: frame, motionBox: nil, now: 0)
         let second = planner.regions(zone: zone, frame: frame, motionBox: nil, now: 0.3)
@@ -193,7 +194,7 @@ final class LiveServerTests: XCTestCase {
         server.pin = "4321"
         XCTAssertTrue(body(server.respond(to: "/")).contains("Enter the PIN"))
         XCTAssertTrue(body(server.respond(to: "/status.json?pin=1111")).hasPrefix("HTTP/1.1 403"))
-        XCTAssertTrue(body(server.respond(to: "/?pin=4321")).contains("Recent alerts"))
+        XCTAssertTrue(body(server.respond(to: "/?pin=4321")).contains("Alerts (last 24 h)"))
     }
 
     func testFrameAndViewerTracking() {
@@ -329,5 +330,33 @@ final class DarknessMonitorTests: XCTestCase {
         XCTAssertTrue(LiveServer.page.contains("Not my cat"))
         XCTAssertTrue(LiveServer.page.contains("Clear all"))
         XCTAssertTrue(LiveServer.page.contains("toggle(\"full\")"))
+    }
+
+    // MARK: - Motion blobs
+
+    func testBlobsSeparateTwoAnimalsAndIgnoreShadowSweep() {
+        let cols = MotionDetector.cols, rows = MotionDetector.rows
+        let prev = [UInt8](repeating: 100, count: cols * rows)
+        var cur = prev
+        func paint(_ c0: Int, _ r0: Int, _ w: Int, _ h: Int) {
+            for r in r0..<(r0 + h) { for c in c0..<(c0 + w) { cur[r * cols + c] = 160 } }
+        }
+        paint(5, 10, 4, 3)      // small animal
+        paint(40, 70, 3, 3)     // another one
+        paint(0, 30, cols, 30)  // shadow sweep across the whole width
+        let blobs = MotionDetector.blobs(previous: prev, current: cur, mask: [Bool](repeating: true, count: cols * rows), threshold: 22)
+        XCTAssertEqual(blobs.count, 2)
+        XCTAssertTrue(blobs.contains { $0.contains(CGPoint(x: 6.5 / Double(cols), y: 11.5 / Double(rows))) })
+        XCTAssertTrue(blobs.contains { $0.contains(CGPoint(x: 41.5 / Double(cols), y: 71.5 / Double(rows))) })
+    }
+
+    func testPlannerScansThreeTilesAndEachBlob() {
+        var planner = ScanPlanner()
+        let frame = CGSize(width: 1080, height: 1920)
+        let blobs = [CGRect(x: 0.1, y: 0.1, width: 0.05, height: 0.03), CGRect(x: 0.7, y: 0.8, width: 0.05, height: 0.03)]
+        let regions = planner.regions(zone: Zone(), frame: frame, motionBox: CGRect(x: 0, y: 0, width: 1, height: 1), now: 0, motionBlobs: blobs)
+        XCTAssertEqual(regions.first, ScanPlanner.whole)
+        XCTAssertGreaterThanOrEqual(regions.count, 1 + 2 + 2)   // whole + both blobs + tiles (some may be skipped as repeats)
+        XCTAssertTrue(regions.contains { $0.contains(CGPoint(x: 0.125, y: 0.115)) && $0.width < 0.5 })
     }
 }

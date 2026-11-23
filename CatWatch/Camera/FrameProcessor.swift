@@ -54,8 +54,8 @@ final class FrameProcessor: @unchecked Sendable {
         let ciImage = CIImage(cvPixelBuffer: pixelBuffer)
         let frame = ciImage.extent.size
         let thumb = MotionDetector.thumbnail(pixelBuffer)
-        let moved = thumb.map { motion.update(thumb: $0, zone: cfg.zone) } ?? (fraction: 0, box: nil)
-        let regions = planner.regions(zone: cfg.zone, frame: frame, motionBox: moved.box, now: now)
+        let moved = thumb.map { motion.update(thumb: $0, zone: cfg.zone) } ?? (fraction: 0, box: nil, blobs: [])
+        let regions = planner.regions(zone: cfg.zone, frame: frame, motionBox: moved.box, now: now, motionBlobs: moved.blobs)
 
         // Detect down to 10% so a weak sighting gets a closer look (and training can keep it);
         // alerts use the user's threshold.

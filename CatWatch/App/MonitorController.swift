@@ -21,6 +21,8 @@ final class MonitorController: ObservableObject {
     private var darkness = DarknessMonitor()
     private let processor = FrameProcessor()
     private let orientation = OrientationMonitor()
+    /// Latest camera picture, for the diagnostics page.
+    private let lastLive = ImageHolder()
     private let settings: AppSettings
     private let store: EventStore
     private var gate = TriggerGate()
@@ -39,6 +41,7 @@ final class MonitorController: ObservableObject {
         camera.onFrame = { @Sendable [processor] buffer in processor.process(buffer) }
         processor.wantsPreview = { @Sendable [web] in web.hasViewer }
         web.setEventsDirectory(store.directoryURL)
+        web.onDebug = { @Sendable [lastLive] in DetectorDiagnostics.report(live: lastLive.image) }
         web.onAction = { @Sendable [weak self] action, params in
             Task { @MainActor in await self?.perform(action, params) }
         }
@@ -162,6 +165,7 @@ final class MonitorController: ObservableObject {
     private func publishLiveView(_ result: FrameResult, zone: Zone) {
         if Date().timeIntervalSince(lastStatusAt) >= 1 { publishStatus() }
         guard web.hasViewer, let image = result.image else { return }
+        lastLive.image = image
         let all = result.allDetections.map { d -> CatDetection in
             var d = d
             d.inZone = zone.intersects(box: d.box)
@@ -372,5 +376,14 @@ final class MonitorController: ObservableObject {
     private static var batteryPercent: String {
         let level = UIDevice.current.batteryLevel
         return level < 0 ? "unknown" : "\(Int(level * 100))%"
+    }
+}
+
+final class ImageHolder: @unchecked Sendable {
+    private let lock = NSLock()
+    private var _image: CGImage?
+    var image: CGImage? {
+        get { lock.withLock { _image } }
+        set { lock.withLock { _image = newValue } }
     }
 }
