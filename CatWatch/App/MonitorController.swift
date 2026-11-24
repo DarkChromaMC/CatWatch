@@ -73,10 +73,20 @@ final class MonitorController: ObservableObject {
             return
         }
         errorMessage = nil
+        darkness.reset()
         isRunning = true
         lastFrameAt = Date()
         UIApplication.shared.isIdleTimerDisabled = true
         startWatchdog()
+    }
+
+    /// Start, and keep trying every 10 s if the camera isn't available yet (e.g. right after unlocking).
+    func startWithRetry() async {
+        for _ in 0..<30 {
+            await start()
+            if isRunning { return }
+            try? await Task.sleep(for: .seconds(10))
+        }
     }
 
     func stop() {
@@ -349,9 +359,12 @@ final class MonitorController: ObservableObject {
 
     func scenePhaseChanged(active: Bool) {
         if active {
+            // The listener dies while the app is in the background; start it fresh.
+            if web.isRunning { web.stop() }
+            updateWebServer()
             if wasRunningBeforeBackground {
                 wasRunningBeforeBackground = false
-                Task { await start() }
+                Task { await startWithRetry() }
             }
         } else if isRunning {
             wasRunningBeforeBackground = true

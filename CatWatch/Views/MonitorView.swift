@@ -42,7 +42,7 @@ struct MonitorView: View {
         .persistentSystemOverlays(.hidden)
         .simultaneousGesture(DragGesture(minimumDistance: 0).onChanged { _ in wake() })
         .onReceive(tick) { _ in checkDim() }
-        .task { await monitor.start() }
+        .task { await monitor.startWithRetry() }
         .onChange(of: scenePhase) { _, phase in
             if phase == .active { monitor.scenePhaseChanged(active: true) }
             if phase == .background { monitor.scenePhaseChanged(active: false) }

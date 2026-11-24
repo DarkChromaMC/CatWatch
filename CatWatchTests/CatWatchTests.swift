@@ -212,29 +212,43 @@ final class LiveServerTests: XCTestCase {
 }
 
 final class DarknessMonitorTests: XCTestCase {
-    func testNeedsToStayDarkBeforeSwitching() {
-        var m = DarknessMonitor()
-        let t0 = Date(timeIntervalSince1970: 0)
-        XCTAssertNil(m.update(brightness: 10, at: t0))
-        XCTAssertNil(m.update(brightness: 10, at: t0.addingTimeInterval(60)))
-        // A brief bright frame (headlight) restarts the wait.
-        XCTAssertNil(m.update(brightness: 120, at: t0.addingTimeInterval(90)))
-        XCTAssertNil(m.update(brightness: 10, at: t0.addingTimeInterval(100)))
-        XCTAssertNil(m.update(brightness: 10, at: t0.addingTimeInterval(200)))
-        XCTAssertEqual(m.update(brightness: 10, at: t0.addingTimeInterval(221)), true)
-        XCTAssertTrue(m.isDark)
+    let t0 = Date(timeIntervalSince1970: 0)
+    func feed(_ m: inout DarknessMonitor, _ b: Double, from: Double, to: Double, every: Double = 2) -> Bool? {
+        var last: Bool?
+        for t in stride(from: from, through: to, by: every) { if let r = m.update(brightness: b, at: t0.addingTimeInterval(t)) { last = r } }
+        return last
     }
 
-    func testHysteresisBand() {
+    func testDarkOnlyAfterThreeMinutes() {
         var m = DarknessMonitor()
-        let t0 = Date(timeIntervalSince1970: 0)
-        _ = m.update(brightness: 5, at: t0)
-        XCTAssertEqual(m.update(brightness: 5, at: t0.addingTimeInterval(121)), true)
-        // Between the thresholds: stays dark.
-        _ = m.update(brightness: 35, at: t0.addingTimeInterval(130))
-        XCTAssertNil(m.update(brightness: 35, at: t0.addingTimeInterval(400)))
-        _ = m.update(brightness: 80, at: t0.addingTimeInterval(500))
-        XCTAssertEqual(m.update(brightness: 80, at: t0.addingTimeInterval(621)), false)
+        XCTAssertNil(feed(&m, 10, from: 0, to: 150))
+        XCTAssertEqual(feed(&m, 10, from: 152, to: 200), true)
+    }
+
+    func testMovingThePhoneDoesNotMeanDark() {
+        var m = DarknessMonitor()
+        // Pointing at the deck for a minute while remounting, then daylight again.
+        XCTAssertNil(feed(&m, 15, from: 0, to: 60))
+        XCTAssertNil(feed(&m, 125, from: 62, to: 400))
+        XCTAssertFalse(m.isDark)
+    }
+
+    func testOddDarkFramesDoNotKeepItDark() {
+        var m = DarknessMonitor()
+        _ = feed(&m, 10, from: 0, to: 200)
+        XCTAssertTrue(m.isDark)
+        // Daylight with an occasional dark frame: clears within ~15 s.
+        var cleared: Bool?
+        for t in stride(from: 202.0, through: 240, by: 2) {
+            if let r = m.update(brightness: Int(t) % 10 == 0 ? 30 : 125, at: t0.addingTimeInterval(t)) { cleared = r }
+        }
+        XCTAssertEqual(cleared, false)
+    }
+
+    func testBlackGlitchFramesIgnored() {
+        var m = DarknessMonitor()
+        XCTAssertNil(feed(&m, 0, from: 0, to: 400))
+        XCTAssertFalse(m.isDark)
     }
 
     func testAverageBrightness() {
