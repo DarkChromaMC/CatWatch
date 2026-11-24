@@ -46,8 +46,12 @@ final class FrameProcessor: @unchecked Sendable {
     }
 
     func process(_ pixelBuffer: CVPixelBuffer) {
+        process(pixelBuffer, now: CACurrentMediaTime())
+    }
+
+    /// `now` is passed in so recorded frames can be replayed through the real pipeline (tests).
+    func process(_ pixelBuffer: CVPixelBuffer, now: CFTimeInterval) {
         let cfg = config
-        let now = CACurrentMediaTime()
         guard now - lastProcessed >= 1 / max(0.2, cfg.rate) else { return }
         lastProcessed = now
 

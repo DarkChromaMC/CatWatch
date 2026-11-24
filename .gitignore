@@ -5,3 +5,5 @@ dist/
 DerivedData/
 .DS_Store
 xcuserdata/
+CatWatch/Resources/debug-cat.jpg
+CatWatchTests/Replay/

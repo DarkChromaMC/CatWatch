@@ -10,8 +10,9 @@ import Vision
 /// cut out of the user's photos and pasted into those frames at camera size.
 final class CatVerifier {
     /// Below this chance of being the cat, a sighting is treated as a hen and no alert is sent.
-    /// Testing: blocked almost every hen while keeping ~99% of cat views.
-    static let threshold: Float = 0.3
+    /// 0.85 (was 0.3): replay on the phone let 2 hens through at 0.78 and 0.44 while the real
+    /// cat always scored 1.00; held-out synthetic cats kept 98.7% at 0.3 and at 0.85 alike.
+    static let threshold: Float = 0.85
 
     private let model: VNCoreMLModel?
 
