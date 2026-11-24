@@ -63,7 +63,7 @@ final class ReplayTests: XCTestCase {
     }
 
     func testHenOnlyFramesDoNotAlert() throws {
-        let hens = frames("hen") + frames("hen2")
+        let hens = frames("hen") + frames("hen2") + frames("hen3")
         try XCTSkipIf(hens.isEmpty, "Replay frames not present (kept out of git).")
         let o = try replay(hens)
         print("REPLAY hens: \(o.framesWithCat)/\(o.frames) frames passed as cat, \(o.alerts) alert(s).\n" + Set(o.notes).sorted().joined(separator: "\n"))
