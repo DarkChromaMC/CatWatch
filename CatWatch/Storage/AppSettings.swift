@@ -40,7 +40,7 @@ final class AppSettings: ObservableObject {
     init() {
         defaults.register(defaults: [
             "minConfidence": 0.5,
-            "requiredHits": 2,
+            "requiredHits": 1,
             "cooldown": 120.0,
             "detectionRate": 3.0,
             "useUltraWide": false,
