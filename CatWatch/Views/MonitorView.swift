@@ -17,7 +17,6 @@ struct MonitorView: View {
     @State private var savedBrightness: CGFloat = UIScreen.main.brightness
     @State private var dimOffset = CGSize.zero
 
-    private let tick = Timer.publish(every: 5, on: .main, in: .common).autoconnect()
 
     var body: some View {
         GeometryReader { geo in
@@ -41,7 +40,14 @@ struct MonitorView: View {
         .statusBarHidden()
         .persistentSystemOverlays(.hidden)
         .simultaneousGesture(DragGesture(minimumDistance: 0).onChanged { _ in wake() })
-        .onReceive(tick) { _ in checkDim() }
+        // A loop tied to the view's lifetime. (A Timer.publish stored on the struct was recreated every
+        // time the app re-rendered, several times a second while watching, so it never fired.)
+        .task {
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .seconds(5))
+                checkDim()
+            }
+        }
         .task { await monitor.startWithRetry() }
         .onChange(of: scenePhase) { _, phase in
             if phase == .active { monitor.scenePhaseChanged(active: true) }
