@@ -75,7 +75,7 @@ final class ReplayTests: XCTestCase {
 
     /// Pukekos and hens that alerted on 11-25/26 with model v5 (wider camera view, current zone).
     func testPukekoAndHenAlertFramesDoNotAlert() throws {
-        let birds = frames("hen4")
+        let birds = frames("hen4") + frames("hen5")
         try XCTSkipIf(birds.isEmpty, "Replay frames not present (kept out of git).")
         let o = try replay(birds, zone: loadZone("replay_zone4"))
         print("REPLAY birds: \(o.framesWithCat)/\(o.frames) frames passed as cat, \(o.alerts) alert(s).\n" + Set(o.notes).sorted().joined(separator: "\n"))
