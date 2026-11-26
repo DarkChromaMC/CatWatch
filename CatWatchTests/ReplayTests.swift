@@ -15,15 +15,18 @@ final class ReplayTests: XCTestCase {
             .sorted { $0.lastPathComponent < $1.lastPathComponent }
     }
 
-    var zone: Zone {
-        guard let url = Bundle(for: Self.self).url(forResource: "replay_zone", withExtension: "json"),
+    var zone: Zone { loadZone("replay_zone") }
+
+    func loadZone(_ name: String) -> Zone {
+        guard let url = Bundle(for: Self.self).url(forResource: name, withExtension: "json"),
               let data = try? Data(contentsOf: url), let z = try? JSONDecoder().decode(Zone.self, from: data) else { return Zone() }
         return z
     }
 
     /// Each frame is shown to the camera pipeline for ~2 s at the app's 3 checks a second,
     /// like a cat standing still between recorded frames.
-    func replay(_ urls: [URL], checksPerFrame: Int = 6) throws -> Outcome {
+    func replay(_ urls: [URL], checksPerFrame: Int = 6, zone: Zone? = nil) throws -> Outcome {
+        let zone = zone ?? self.zone
         let processor = FrameProcessor()
         processor.config = DetectionConfig(rate: 3, minConfidence: Float(0.5), recordTraining: false, ignoreHens: true, zone: zone)
         var gate = TriggerGate(requiredHits: 1)
@@ -68,5 +71,14 @@ final class ReplayTests: XCTestCase {
         let o = try replay(hens)
         print("REPLAY hens: \(o.framesWithCat)/\(o.frames) frames passed as cat, \(o.alerts) alert(s).\n" + Set(o.notes).sorted().joined(separator: "\n"))
         XCTAssertEqual(o.alerts, 0, "Hens caused alerts: \(o.framesWithCat) frames passed as cat.")
+    }
+
+    /// Pukekos and hens that alerted on 11-25/26 with model v5 (wider camera view, current zone).
+    func testPukekoAndHenAlertFramesDoNotAlert() throws {
+        let birds = frames("hen4")
+        try XCTSkipIf(birds.isEmpty, "Replay frames not present (kept out of git).")
+        let o = try replay(birds, zone: loadZone("replay_zone4"))
+        print("REPLAY birds: \(o.framesWithCat)/\(o.frames) frames passed as cat, \(o.alerts) alert(s).\n" + Set(o.notes).sorted().joined(separator: "\n"))
+        XCTAssertEqual(o.alerts, 0, "Birds caused alerts: \(o.framesWithCat) frames passed as cat.")
     }
 }

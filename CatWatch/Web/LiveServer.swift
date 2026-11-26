@@ -28,7 +28,7 @@ final class LiveServer: @unchecked Sendable {
         set { lock.withLock { _onDebug = newValue } }
     }
     private var _onDebug: (@Sendable () -> Data)?
-    static let actions: Set<String> = ["dismiss", "clear", "label", "snooze", "pause", "resume"]
+    static let actions: Set<String> = ["dismiss", "clear", "label", "snooze", "pause", "resume", "cleartraining"]
 
     var pin: String {
         get { lock.withLock { _pin } }

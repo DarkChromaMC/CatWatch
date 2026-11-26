@@ -132,6 +132,7 @@ final class MonitorController: ObservableObject {
         switch action {
         case "dismiss": if let id { store.delete(id: id) }
         case "clear": store.deleteAll()
+        case "cleartraining": processor.recorder.deleteAll()
         case "label": if let id, let label = params["as"] { store.label(id, as: label) }
         case "snooze": snooze(minutes: min(max(Int(params["min"] ?? "") ?? 0, 0), 24 * 60))
         case "pause": stop()
