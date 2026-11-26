@@ -46,16 +46,20 @@ final class FrameProcessor: @unchecked Sendable {
     }
 
     func process(_ pixelBuffer: CVPixelBuffer) {
+        process(pixelBuffer, now: CACurrentMediaTime())
+    }
+
+    /// `now` is passed in so recorded frames can be replayed through the real pipeline (tests).
+    func process(_ pixelBuffer: CVPixelBuffer, now: CFTimeInterval) {
         let cfg = config
-        let now = CACurrentMediaTime()
         guard now - lastProcessed >= 1 / max(0.2, cfg.rate) else { return }
         lastProcessed = now
 
         let ciImage = CIImage(cvPixelBuffer: pixelBuffer)
         let frame = ciImage.extent.size
         let thumb = MotionDetector.thumbnail(pixelBuffer)
-        let moved = thumb.map { motion.update(thumb: $0, zone: cfg.zone) } ?? (fraction: 0, box: nil)
-        let regions = planner.regions(zone: cfg.zone, frame: frame, motionBox: moved.box, now: now)
+        let moved = thumb.map { motion.update(thumb: $0, zone: cfg.zone) } ?? (fraction: 0, box: nil, blobs: [])
+        let regions = planner.regions(zone: cfg.zone, frame: frame, motionBox: moved.box, now: now, motionBlobs: moved.blobs)
 
         // Detect down to 10% so a weak sighting gets a closer look (and training can keep it);
         // alerts use the user's threshold.

@@ -49,7 +49,10 @@ struct ScanPlanner {
     }
 
     /// Regions to run the detector on this pass.
-    mutating func regions(zone: Zone, frame: CGSize, motionBox: CGRect?, now: Double) -> [CGRect] {
+    /// Zone tiles scanned per pass: 3 means each part of an 18-tile zone is checked every 2 s at 3 checks/s.
+    var tilesPerPass = 3
+
+    mutating func regions(zone: Zone, frame: CGSize, motionBox: CGRect?, now: Double, motionBlobs: [CGRect] = []) -> [CGRect] {
         if tilesKey.map({ $0.0 != zone || $0.1 != frame }) ?? true {
             tiles = Self.tiles(covering: Self.bounds(of: zone), frame: frame)
             tilesKey = (zone, frame)
@@ -65,8 +68,9 @@ struct ScanPlanner {
             if !repeats { out.append(r) }
         }
         if let focus, now < focus.until { add(Self.square(around: focus.box, frame: frame)) }
-        if let motionBox { add(Self.square(around: motionBox, frame: frame)) }
-        if !tiles.isEmpty {
+        for blob in motionBlobs { add(Self.square(around: blob, frame: frame)) }
+        if motionBlobs.isEmpty, let motionBox { add(Self.square(around: motionBox, frame: frame)) }
+        for _ in 0..<min(tilesPerPass, tiles.count) {
             add(tiles[tileIndex % tiles.count])
             tileIndex += 1
         }

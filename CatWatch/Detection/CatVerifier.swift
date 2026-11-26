@@ -10,8 +10,9 @@ import Vision
 /// cut out of the user's photos and pasted into those frames at camera size.
 final class CatVerifier {
     /// Below this chance of being the cat, a sighting is treated as a hen and no alert is sent.
-    /// Testing: blocked almost every hen while keeping ~99% of cat views.
-    static let threshold: Float = 0.3
+    /// 0.85 (was 0.3): replay on the phone let 2 hens through at 0.78 and 0.44 while the real
+    /// cat always scored 1.00; held-out synthetic cats kept 98.7% at 0.3 and at 0.85 alike.
+    static let threshold: Float = 0.85
 
     private let model: VNCoreMLModel?
 
@@ -26,28 +27,40 @@ final class CatVerifier {
 
     var isAvailable: Bool { model != nil }
 
-    /// Chance (0...1) that `box` shows the cat, or nil if the model couldn't run (then don't block).
+    /// Crop sizes (times the box's longer side) the verifier must agree on. One crop was not
+    /// enough: on 2026-11-26 the same pukeko scored 0.00 at one framing and 1.00 at another, and
+    /// one lucky crop sent an alert. The real cat scores 1.00 at all three.
+    static let cropScales: [CGFloat] = [1.4, 1.8, 2.2]
+
+    /// Chance (0...1) that `box` shows the cat: the lowest score over `cropScales`,
+    /// or nil if the model couldn't run (then don't block).
     func catProbability(in pixelBuffer: CVPixelBuffer, box: CGRect) -> Float? {
         guard let model else { return nil }
         let frame = CGSize(width: CVPixelBufferGetWidth(pixelBuffer), height: CVPixelBufferGetHeight(pixelBuffer))
-        let crop = Self.cropRegion(box: box, frame: frame)
-        let request = VNCoreMLRequest(model: model)
-        request.imageCropAndScaleOption = .scaleFill
-        // Vision wants origin bottom-left.
-        request.regionOfInterest = CGRect(x: crop.minX, y: 1 - crop.maxY, width: crop.width, height: crop.height)
         let handler = VNImageRequestHandler(cvPixelBuffer: pixelBuffer, orientation: .up, options: [:])
-        guard (try? handler.perform([request])) != nil,
-              let results = request.results as? [VNClassificationObservation] else { return nil }
-        return results.first { $0.identifier == "cat" }?.confidence
+        var lowest: Float?
+        for scale in Self.cropScales {
+            let crop = Self.cropRegion(box: box, frame: frame, scale: scale)
+            let request = VNCoreMLRequest(model: model)
+            request.imageCropAndScaleOption = .scaleFill
+            // Vision wants origin bottom-left.
+            request.regionOfInterest = CGRect(x: crop.minX, y: 1 - crop.maxY, width: crop.width, height: crop.height)
+            guard (try? handler.perform([request])) != nil,
+                  let results = request.results as? [VNClassificationObservation] else { return nil }
+            let score = results.first { $0.identifier == "cat" }?.confidence ?? 0
+            lowest = min(lowest ?? score, score)
+            if score < Self.threshold { break }   // already rejected, skip the other sizes
+        }
+        return lowest
     }
 
-    /// The square the model was trained on: 1.6x the box's longer side (at least 80 px of a
+    /// The square the model was trained on: `scale` (default 1.6) x the box's longer side (at least 80 px of a
     /// 1080-wide frame), centred on the box and kept inside the frame. Normalized, origin top-left.
-    static func cropRegion(box: CGRect, frame: CGSize) -> CGRect {
+    static func cropRegion(box: CGRect, frame: CGSize, scale: CGFloat = 1.6) -> CGRect {
         let W = frame.width, H = frame.height
         guard W > 0, H > 0 else { return CGRect(x: 0, y: 0, width: 1, height: 1) }
         let minSide = 80 / 1080 * W
-        var side = max(box.width * W, box.height * H) * 1.6
+        var side = max(box.width * W, box.height * H) * scale
         side = min(max(side, minSide), min(W, H))
         let cx = box.midX * W, cy = box.midY * H
         let x = min(max(cx - side / 2, 0), W - side)

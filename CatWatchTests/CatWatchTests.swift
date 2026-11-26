@@ -165,6 +165,7 @@ final class ScanPlannerTests: XCTestCase {
 
     func testRegionsRotateTilesAndFocusOnSightings() {
         var planner = ScanPlanner()
+        planner.tilesPerPass = 1
         let zone = Zone(points: [CGPoint(x: 0, y: 0.5), CGPoint(x: 1, y: 0.5), CGPoint(x: 1, y: 0.9), CGPoint(x: 0, y: 0.9)])
         let first = planner.regions(zone: zone, frame: frame, motionBox: nil, now: 0)
         let second = planner.regions(zone: zone, frame: frame, motionBox: nil, now: 0.3)
@@ -193,7 +194,7 @@ final class LiveServerTests: XCTestCase {
         server.pin = "4321"
         XCTAssertTrue(body(server.respond(to: "/")).contains("Enter the PIN"))
         XCTAssertTrue(body(server.respond(to: "/status.json?pin=1111")).hasPrefix("HTTP/1.1 403"))
-        XCTAssertTrue(body(server.respond(to: "/?pin=4321")).contains("Recent alerts"))
+        XCTAssertTrue(body(server.respond(to: "/?pin=4321")).contains("Alerts (last 24 h)"))
     }
 
     func testFrameAndViewerTracking() {
@@ -211,29 +212,43 @@ final class LiveServerTests: XCTestCase {
 }
 
 final class DarknessMonitorTests: XCTestCase {
-    func testNeedsToStayDarkBeforeSwitching() {
-        var m = DarknessMonitor()
-        let t0 = Date(timeIntervalSince1970: 0)
-        XCTAssertNil(m.update(brightness: 10, at: t0))
-        XCTAssertNil(m.update(brightness: 10, at: t0.addingTimeInterval(60)))
-        // A brief bright frame (headlight) restarts the wait.
-        XCTAssertNil(m.update(brightness: 120, at: t0.addingTimeInterval(90)))
-        XCTAssertNil(m.update(brightness: 10, at: t0.addingTimeInterval(100)))
-        XCTAssertNil(m.update(brightness: 10, at: t0.addingTimeInterval(200)))
-        XCTAssertEqual(m.update(brightness: 10, at: t0.addingTimeInterval(221)), true)
-        XCTAssertTrue(m.isDark)
+    let t0 = Date(timeIntervalSince1970: 0)
+    func feed(_ m: inout DarknessMonitor, _ b: Double, from: Double, to: Double, every: Double = 2) -> Bool? {
+        var last: Bool?
+        for t in stride(from: from, through: to, by: every) { if let r = m.update(brightness: b, at: t0.addingTimeInterval(t)) { last = r } }
+        return last
     }
 
-    func testHysteresisBand() {
+    func testDarkOnlyAfterThreeMinutes() {
         var m = DarknessMonitor()
-        let t0 = Date(timeIntervalSince1970: 0)
-        _ = m.update(brightness: 5, at: t0)
-        XCTAssertEqual(m.update(brightness: 5, at: t0.addingTimeInterval(121)), true)
-        // Between the thresholds: stays dark.
-        _ = m.update(brightness: 35, at: t0.addingTimeInterval(130))
-        XCTAssertNil(m.update(brightness: 35, at: t0.addingTimeInterval(400)))
-        _ = m.update(brightness: 80, at: t0.addingTimeInterval(500))
-        XCTAssertEqual(m.update(brightness: 80, at: t0.addingTimeInterval(621)), false)
+        XCTAssertNil(feed(&m, 10, from: 0, to: 150))
+        XCTAssertEqual(feed(&m, 10, from: 152, to: 200), true)
+    }
+
+    func testMovingThePhoneDoesNotMeanDark() {
+        var m = DarknessMonitor()
+        // Pointing at the deck for a minute while remounting, then daylight again.
+        XCTAssertNil(feed(&m, 15, from: 0, to: 60))
+        XCTAssertNil(feed(&m, 125, from: 62, to: 400))
+        XCTAssertFalse(m.isDark)
+    }
+
+    func testOddDarkFramesDoNotKeepItDark() {
+        var m = DarknessMonitor()
+        _ = feed(&m, 10, from: 0, to: 200)
+        XCTAssertTrue(m.isDark)
+        // Daylight with an occasional dark frame: clears within ~15 s.
+        var cleared: Bool?
+        for t in stride(from: 202.0, through: 240, by: 2) {
+            if let r = m.update(brightness: Int(t) % 10 == 0 ? 30 : 125, at: t0.addingTimeInterval(t)) { cleared = r }
+        }
+        XCTAssertEqual(cleared, false)
+    }
+
+    func testBlackGlitchFramesIgnored() {
+        var m = DarknessMonitor()
+        XCTAssertNil(feed(&m, 0, from: 0, to: 400))
+        XCTAssertFalse(m.isDark)
     }
 
     func testAverageBrightness() {
@@ -303,5 +318,59 @@ final class DarknessMonitorTests: XCTestCase {
             XCTAssertEqual(x.minX, r.minX, accuracy: 1e-9, "\(t)")
         }
         XCTAssertEqual(PictureRotation.rect(PictureRotation.rect(r, turns: 1), turns: 3).minY, r.minY, accuracy: 1e-9)
+    }
+
+    // MARK: - Web view actions
+
+    func testActionNeedsPinAndKnownAction() {
+        let server = LiveServer()
+        server.pin = "4321"
+        final class Box: @unchecked Sendable { var calls: [(String, [String: String])] = [] }
+        let box = Box()
+        server.onAction = { action, params in box.calls.append((action, params)) }
+        let noPin = String(decoding: server.respond(to: "/action?do=clear"), as: UTF8.self)
+        XCTAssertTrue(noPin.hasPrefix("HTTP/1.1 403"))
+        let unknown = String(decoding: server.respond(to: "/action?pin=4321&do=format"), as: UTF8.self)
+        XCTAssertTrue(unknown.hasPrefix("HTTP/1.1 404"))
+        let ok = String(decoding: server.respond(to: "/action?pin=4321&do=label&id=abc&as=cat"), as: UTF8.self)
+        XCTAssertTrue(ok.hasPrefix("HTTP/1.1 200"))
+        XCTAssertEqual(box.calls.count, 1)
+        XCTAssertEqual(box.calls.first?.0, "label")
+        XCTAssertEqual(box.calls.first?.1, ["do": "label", "id": "abc", "as": "cat"])
+    }
+
+    func testPageHasNewControls() {
+        XCTAssertTrue(LiveServer.page.contains("Snooze 30 min"))
+        XCTAssertTrue(LiveServer.page.contains("Not my cat"))
+        XCTAssertTrue(LiveServer.page.contains("Clear all"))
+        XCTAssertTrue(LiveServer.page.contains("toggle(\"full\")"))
+    }
+
+    // MARK: - Motion blobs
+
+    func testBlobsSeparateTwoAnimalsAndIgnoreShadowSweep() {
+        let cols = MotionDetector.cols, rows = MotionDetector.rows
+        let prev = [UInt8](repeating: 100, count: cols * rows)
+        var cur = prev
+        func paint(_ c0: Int, _ r0: Int, _ w: Int, _ h: Int) {
+            for r in r0..<(r0 + h) { for c in c0..<(c0 + w) { cur[r * cols + c] = 160 } }
+        }
+        paint(5, 10, 4, 3)      // small animal
+        paint(40, 70, 3, 3)     // another one
+        paint(0, 30, cols, 30)  // shadow sweep across the whole width
+        let blobs = MotionDetector.blobs(previous: prev, current: cur, mask: [Bool](repeating: true, count: cols * rows), threshold: 22)
+        XCTAssertEqual(blobs.count, 2)
+        XCTAssertTrue(blobs.contains { $0.contains(CGPoint(x: 6.5 / Double(cols), y: 11.5 / Double(rows))) })
+        XCTAssertTrue(blobs.contains { $0.contains(CGPoint(x: 41.5 / Double(cols), y: 71.5 / Double(rows))) })
+    }
+
+    func testPlannerScansThreeTilesAndEachBlob() {
+        var planner = ScanPlanner()
+        let frame = CGSize(width: 1080, height: 1920)
+        let blobs = [CGRect(x: 0.1, y: 0.1, width: 0.05, height: 0.03), CGRect(x: 0.7, y: 0.8, width: 0.05, height: 0.03)]
+        let regions = planner.regions(zone: Zone(), frame: frame, motionBox: CGRect(x: 0, y: 0, width: 1, height: 1), now: 0, motionBlobs: blobs)
+        XCTAssertEqual(regions.first, ScanPlanner.whole)
+        XCTAssertGreaterThanOrEqual(regions.count, 1 + 2 + 2)   // whole + both blobs + tiles (some may be skipped as repeats)
+        XCTAssertTrue(regions.contains { $0.contains(CGPoint(x: 0.125, y: 0.115)) && $0.width < 0.5 })
     }
 }

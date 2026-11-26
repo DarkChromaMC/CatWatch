@@ -58,7 +58,7 @@ struct SettingsView: View {
                 } header: {
                     Text("Detection")
                 } footer: {
-                    Text("Lower confidence catches more but may false-alarm. Requiring 2+ sightings filters one-off glitches. Ignore hens double-checks each sighting with a model trained on your garden; turn it off if it ever misses your cat. Ultra-wide sees more of the yard but makes the cat smaller.")
+                    Text("Lower confidence catches more but may false-alarm. 1 sighting alerts fastest (best for not missing the cat); 2+ filters one-off glitches. Ignore hens double-checks each sighting with a model trained on your garden; turn it off if it ever misses your cat. Ultra-wide sees more of the yard but makes the cat smaller.")
                 }
 
                 Section {
@@ -72,6 +72,10 @@ struct SettingsView: View {
                     }
                     if settings.webViewEnabled {
                         LabeledContent("PIN", value: settings.webPin)
+                        if let problem = monitor.webError {
+                            Text("Not reachable yet: \(problem). Check iPhone Settings › Privacy & Security › Local Network › CatWatch.")
+                                .font(.footnote).foregroundStyle(.red)
+                        }
                         if let address = LiveServer.wifiAddress() {
                             let link = "http://\(address):\(LiveServer.port)/?pin=\(settings.webPin)"
                             Text(link).font(.footnote.monospaced()).textSelection(.enabled)

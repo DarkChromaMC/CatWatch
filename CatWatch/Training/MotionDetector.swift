@@ -68,16 +68,55 @@ struct MotionDetector {
 
     /// Feeds the next frame's thumbnail; returns the changed fraction since the previous one
     /// and the bounding box (normalized, origin top-left) of the changed cells in the zone.
-    mutating func update(thumb: [UInt8], zone: Zone) -> (fraction: Double, box: CGRect?) {
+    mutating func update(thumb: [UInt8], zone: Zone) -> (fraction: Double, box: CGRect?, blobs: [CGRect]) {
         if maskZone != zone {
             mask = Self.mask(for: zone)
             maskZone = zone
         }
         defer { previous = thumb }
-        guard let previous, previous.count == thumb.count else { return (0, nil) }
+        guard let previous, previous.count == thumb.count else { return (0, nil, []) }
         let fraction = Self.changedFraction(previous: previous, current: thumb, mask: mask, threshold: pixelThreshold)
-        guard fraction >= minFraction else { return (fraction, nil) }
-        return (fraction, Self.changedBox(previous: previous, current: thumb, mask: mask, threshold: pixelThreshold))
+        let blobs = Self.blobs(previous: previous, current: thumb, mask: mask, threshold: pixelThreshold)
+        guard fraction >= minFraction else { return (fraction, nil, blobs) }
+        return (fraction, Self.changedBox(previous: previous, current: thumb, mask: mask, threshold: pixelThreshold), blobs)
+    }
+
+    /// Separate moving things (normalized boxes, biggest first). Sun and wind move shadows all over
+    /// the lawn, so one box around *all* change is useless; an animal is a compact blob. Blobs larger
+    /// than `maxSide` of the frame (shadow sweeps, the camera being bumped) are left out.
+    static func blobs(previous: [UInt8], current: [UInt8], mask: [Bool], threshold: Int,
+                      maxCount: Int = 3, minCells: Int = 2, maxSide: Double = 0.45) -> [CGRect] {
+        var changed = [Bool](repeating: false, count: cols * rows)
+        for i in current.indices where mask[i] && abs(Int(current[i]) - Int(previous[i])) > threshold { changed[i] = true }
+        // Join cells one apart (a cat's legs and body change in separate cells).
+        var grown = changed
+        for r in 0..<rows { for c in 0..<cols where changed[r * cols + c] {
+            for (dr, dc) in [(0, 1), (1, 0), (0, -1), (-1, 0)] {
+                let nr = r + dr, nc = c + dc
+                if nr >= 0, nr < rows, nc >= 0, nc < cols { grown[nr * cols + nc] = true }
+            }
+        } }
+        var seen = [Bool](repeating: false, count: cols * rows)
+        var found: [(cells: Int, box: CGRect)] = []
+        for start in grown.indices where grown[start] && !seen[start] {
+            var stack = [start]; seen[start] = true
+            var cells = 0, minC = cols, minR = rows, maxC = -1, maxR = -1
+            while let i = stack.popLast() {
+                let r = i / cols, c = i % cols
+                if changed[i] { cells += 1 }
+                minC = min(minC, c); maxC = max(maxC, c); minR = min(minR, r); maxR = max(maxR, r)
+                for (dr, dc) in [(0, 1), (1, 0), (0, -1), (-1, 0)] {
+                    let nr = r + dr, nc = c + dc
+                    guard nr >= 0, nr < rows, nc >= 0, nc < cols else { continue }
+                    let j = nr * cols + nc
+                    if grown[j] && !seen[j] { seen[j] = true; stack.append(j) }
+                }
+            }
+            let w = Double(maxC - minC + 1) / Double(cols), h = Double(maxR - minR + 1) / Double(rows)
+            guard cells >= minCells, w <= maxSide, h <= maxSide else { continue }
+            found.append((cells, CGRect(x: Double(minC) / Double(cols), y: Double(minR) / Double(rows), width: w, height: h)))
+        }
+        return found.sorted { $0.cells > $1.cells }.prefix(maxCount).map(\.box)
     }
 
     static func changedBox(previous: [UInt8], current: [UInt8], mask: [Bool], threshold: Int) -> CGRect? {
